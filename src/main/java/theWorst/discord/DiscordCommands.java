@@ -17,6 +17,13 @@ public class DiscordCommands implements MessageCreateListener {
         commands.put(c.name,c);
     }
 
+    public boolean hasCommand(String command){
+        return commands.containsKey(command);
+    }
+
+    public boolean isRestricted(String command){
+        return commands.get(command) instanceof RoleRestrictedCommand;
+    }
 
     @Override
     public void onMessageCreate(MessageCreateEvent messageCreateEvent) {

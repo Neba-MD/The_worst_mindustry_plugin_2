@@ -4,6 +4,7 @@ import arc.Events;
 import arc.files.Fi;
 import arc.struct.Array;
 import arc.util.Log;
+import arc.util.Timer;
 import mindustry.Vars;
 import mindustry.core.GameState;
 import mindustry.entities.type.Player;
@@ -20,6 +21,7 @@ import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.entity.channel.TextChannel;
 import org.javacord.api.entity.message.Message;
 import org.javacord.api.entity.message.MessageAttachment;
+import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.permission.Role;
 import org.javacord.api.event.message.MessageCreateEvent;
@@ -31,18 +33,23 @@ import theWorst.discord.*;
 import theWorst.helpers.MapManager;
 
 import java.awt.*;
-import java.io.File;
-import java.io.IOException;
+import java.awt.image.BufferedImage;
+import java.io.*;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static mindustry.Vars.*;
 
 public class DiscordBot {
     public static String prefix="!";
+    private final int maxMessageLength=2000;
 
     private static   DiscordApi api;
+    
+    private final MapParser mapParser = new MapParser();
 
     private static final HashMap<String, Role> roles = new HashMap<>();
     private static final HashMap<String, TextChannel> channels = new HashMap<>();
@@ -174,6 +181,33 @@ public class DiscordBot {
                 });
     }
 
+    private EmbedBuilder formMapEmbed(Map map,String reason,CommandContext ctx) {
+
+        EmbedBuilder eb = new EmbedBuilder()
+                .setTitle("**"+reason.toUpperCase()+"** "+map.name())
+                .setAuthor(map.author())
+                .setDescription(map.description()+"\n**Posted by "+ctx.author.getName()+"**");
+                try{
+                    InputStream in = new FileInputStream(map.file.file());
+                    BufferedImage img = mapParser.parseMap(in).image;
+                    eb.setThumbnail(img);
+                } catch (IOException ex){
+                    ctx.reply("I em unable to post map with image.");
+                }
+
+        return eb;
+    }
+
+    private boolean hasNotMapAttached(CommandContext ctx){
+        Message message = ctx.event.getMessage();
+        if(message.getAttachments().size() != 1 || !message.getAttachments().get(0).getFileName().endsWith(".msav")){
+            ctx.reply("You must have one .msav file in the same message as the command!");
+            message.delete();
+            return true;
+        }
+        return false;
+    }
+
     private void registerCommands(DiscordCommands handler) {
         handler.registerCommand(new Command("help") {
             {
@@ -191,8 +225,10 @@ public class DiscordBot {
                 for(String s:handler.commands.keySet()){
                     Command c =handler.commands.get(s);
                     StringBuilder to = sb;
-                    if(c instanceof RoleRestrictedCommand) to =sb2;
+                    boolean isRestricted =c instanceof RoleRestrictedCommand;
+                    if(isRestricted) to =sb2;
                     to.append("**").append(prefix).append(c.name).append("**");
+                    if(isRestricted) to.append("-").append(((RoleRestrictedCommand)c).role.getName());
                     to.append("-").append(c.argStruct);
                     to.append("-").append(c.description).append("\n");
                 }
@@ -283,14 +319,7 @@ public class DiscordBot {
                     return;
                 }
 
-                Fi mapFile = found.file;
-
-                EmbedBuilder embed = new EmbedBuilder()
-                        .setTitle(found.name())
-                        .setDescription(found.description())
-                        .setAuthor(found.author())
-                        .setColor(Color.orange);
-                ctx.channel.sendMessage(embed, mapFile.file());
+                ctx.channel.sendMessage(formMapEmbed(found,"download",ctx),found.file.file());
             }
         });
 
@@ -324,57 +353,149 @@ public class DiscordBot {
             public void run(CommandContext ctx) {
                 Array<String> res = Tools.getSearchResult(ctx.args, null, ctx.channel);
                 if (res == null) return;
-                int begin = Math.max(0, res.size - 50);
-                for (int i = begin; i < res.size; i++) {
-                    player.sendMessage(res.get(i));
+
+                StringBuilder mb = new StringBuilder();
+                int shown = 0;
+                int begin = Math.max(0,res.size-20);
+                for (int i = begin; i <res.size; i--) {
+                    String line =Tools.cleanColors(res.get(i));
+                    if(mb.length()+line.length()>maxMessageLength) break;
+                    shown++;
+                    mb.insert(0,Tools.cleanColors(res.get(i))+"\n");
                 }
                 if (res.isEmpty()) {
-                    ctx.channel.sendMessage("No results found.");
+                    ctx.reply("No results found.");
+                } else {
+                    ctx.channel.sendMessage(mb.toString());
+                    if(shown!=res.size){
+                        ctx.reply("I em showing just "+shown+" out of "+res.size+".");
+                    }
                 }
             }
         });
+
+        handler.registerCommand(new Command("postmap") {
+            @Override
+            public void run(CommandContext ctx) {
+                Message message = ctx.event.getMessage();
+                if(hasNotMapAttached(ctx)) return;
+                MessageAttachment a = message.getAttachments().get(0);
+
+                String dir =Main.directory+"postedMaps/";
+                new File(dir).mkdir();
+                try {
+                    String path = dir+a.getFileName();
+                    Tools.downloadFile(a.downloadAsInputStream(),path);
+                    Fi mapFile = new Fi(path);
+                    Map posted = MapIO.createMap(mapFile,true);
+
+                    EmbedBuilder eb = formMapEmbed(posted,"map post",ctx);
+
+                    if(channels.containsKey("maps")){
+                        channels.get("maps").sendMessage(eb,mapFile.file());
+                        ctx.reply("Map posted.");
+                    }else {
+                        ctx.channel.sendMessage(eb,mapFile.file());
+                    }
+                } catch (IOException ex){
+                    ctx.reply("I em unable to post your map.");
+                }
+            }
+        });
+
     }
-    private MapParser mapParser = new MapParser();
+
     private void registerRestrictedCommands(DiscordCommands handler){
         Role admin = roles.get("admin");
+
+        handler.registerCommand(new RoleRestrictedCommand("setrolerestrict","<command> <role>") {
+            {
+                description = "Sets role of role restricted command.";
+                role = admin;
+            }
+            @Override
+            public void run(CommandContext ctx) {
+                if(!handler.hasCommand(ctx.args[0]) || !handler.isRestricted(ctx.args[0])){
+                    ctx.reply("Invalid command. It has to exist and be role restricted.");
+                    return;
+                }
+                if(roles.containsKey(ctx.args[1])){
+                    ctx.reply("this role does not exist.Available roles"+roles.keySet().toString());
+                    return;
+                }
+                ((RoleRestrictedCommand)handler.commands.get(ctx.args[0])).role=roles.get(ctx.args[1]);
+                ctx.reply(String.format("Role of %s is now %s.", ctx.args[0],ctx.args[1]));
+            }
+        });
 
         handler.registerCommand(new RoleRestrictedCommand("addmap") {
             {
                 description = "Adds map to server.";
-                role=roles.get("admin");
+                role=admin;
             }
             @Override
             public void run(CommandContext ctx) {
                 Message message = ctx.event.getMessage();
-                if(message.getAttachments().size() != 1 || !message.getAttachments().get(0).getFileName().endsWith(".msav")){
-                    ctx.reply("You must have one .msav file in the same message as the command!");
-                    message.delete();
-                    return;
-                }
+
+                if(hasNotMapAttached(ctx)) return;
 
                 MessageAttachment a = message.getAttachments().get(0);
                 try {
                     String path="config/maps/"+a.getFileName();
                     Tools.downloadFile(a.downloadAsInputStream(),path);
-                    Map published = MapIO.createMap(new Fi(path),true);
+                    Fi mapFile = new Fi(path);
+                    Map added = MapIO.createMap(mapFile,true);
 
-                    EmbedBuilder eb = new EmbedBuilder()
-                            .setTitle(published.name())
-                            .setAuthor(published.author())
-                            .setDescription(published.description()+"\n**Added to server by"+ctx.author.getName()+"**")
-                            .setThumbnail(mapParser.parseMap(a.downloadAsInputStream()).image);
+                    EmbedBuilder eb = formMapEmbed(added,"new map",ctx);
+
+                    if(channels.containsKey("maps")){
+                        channels.get("maps").sendMessage(eb,mapFile.file());
+                        ctx.reply("Map added.");
+                    }else {
+                        ctx.channel.sendMessage(eb,mapFile.file());
+                    }
 
                     maps.reload();
-                    if(channels.containsKey("maps")){
-                        channels.get("maps").sendMessage(eb,new File(path));
-                    }else {
-                        ctx.channel.sendMessage(eb,new File(path));
-                    }
                 } catch (IOException ex){
                     ctx.reply("I em unable to upload map.");
                     ex.printStackTrace();
                 }
 
+            }
+        });
+
+        handler.registerCommand(new RoleRestrictedCommand("removemap","<name/id>") {
+            {
+                description = "Removes map from server.";
+                role=admin;
+            }
+            @Override
+            public void run(CommandContext ctx) {
+                Map removed = MapManager.findMap(ctx.args[0]);
+
+                if(removed==null){
+                    ctx.reply("Map not found.");
+                    return;
+                }
+
+                EmbedBuilder eb = formMapEmbed(removed,"removed map",ctx);
+                CompletableFuture<Message> mess;
+                if(channels.containsKey("maps")){
+                    mess =  channels.get("maps").sendMessage(eb,removed.file.file());
+                    ctx.reply("Map removed.");
+                }else {
+                    mess = ctx.channel.sendMessage(eb,removed.file.file());
+                }
+               Timer.schedule(new Timer.Task() {
+                   @Override
+                   public void run() {
+                       if(mess.isDone()){
+                           maps.removeMap(removed);
+                           maps.reload();
+                           this.cancel();
+                       }
+                   }
+               },0,1);
             }
         });
 

@@ -424,7 +424,7 @@ public class Main extends Plugin {
             Log.info("Data removed");
         });
 
-        handler.register("w-config","<factory/test/general/ranks/bot>", "Applies the factory configuration,settings and " +
+        handler.register("w-config","<factory/test/general/ranks/discord>", "Applies the factory configuration,settings and " +
                 "loads test questions.", args -> {
             switch (args[0]){
                 case "factory":

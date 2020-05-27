@@ -1,5 +1,6 @@
 package theWorst;
 
+import arc.Core;
 import arc.Events;
 import arc.math.Mathf;
 import arc.struct.Array;
@@ -17,8 +18,6 @@ import mindustry.type.Item;
 import mindustry.type.ItemType;
 import mindustry.type.UnitType;
 import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
 import theWorst.dataBase.*;
 import theWorst.helpers.CoreBuilder;
 import theWorst.helpers.MapManager;
@@ -26,15 +25,14 @@ import theWorst.helpers.Tester;
 import theWorst.helpers.WaveSkipper;
 import theWorst.interfaces.Interruptible;
 import theWorst.interfaces.LoadSave;
-import theWorst.interfaces.runLoad;
-import theWorst.interfaces.runSave;
 import theWorst.requests.Factory;
 import theWorst.requests.Loadout;
 import theWorst.requests.Requester;
 
-import java.io.*;
+import java.io.File;
 import java.util.Arrays;
 
+import static arc.util.Log.info;
 import static java.lang.Math.min;
 import static mindustry.Vars.*;
 
@@ -65,7 +63,7 @@ public class Main extends Plugin {
     MapManager mapManager;
     Factory factory;
     ServerPlayer serverPlayer;
-    BotThread bot;
+    DiscordBot bot;
 
     ActionManager actionManager =new ActionManager();
     Loadout loadout = new Loadout();
@@ -124,40 +122,17 @@ public class Main extends Plugin {
             autoSave(defaultAutoSaveFrequency);
             hud.update();
             hud.startCycle(10);
-            bot = new BotThread(Thread.currentThread());
+            bot = new DiscordBot();
 
         });
     }
 
-
-
-    public static void loadJson(String filename, runLoad load, Runnable save){
-        try (FileReader fileReader = new FileReader(filename)) {
-            JSONParser jsonParser = new JSONParser();
-            Object obj = jsonParser.parse(fileReader);
-            JSONObject saveData = (JSONObject) obj;
-            load.run(saveData);
-            fileReader.close();
-            Log.info("Data from "+filename+" loaded.");
-        } catch (FileNotFoundException ex) {
-            Log.info("No "+filename+" found.Default one wos created.");
-            save.run();
-        } catch (ParseException ex) {
-            Log.info("Json file "+filename+" is invalid.");
-        } catch (IOException ex) {
-            Log.info("Error when loading data from " + filename + ".");
+    private boolean makeDir() {
+        File dir = new File(directory);
+        if (!dir.exists()) {
+            return dir.mkdir();
         }
-    }
-
-    public static void saveJson(String filename,String success, runSave save){
-
-        try (FileWriter file = new FileWriter(filename)) {
-            file.write(save.run().toJSONString());
-            file.close();
-            Log.info(success==null ? "Default "+ filename+ " created" : success);
-        } catch (IOException ex) {
-            Log.info("Error when creating/updating "+filename+".");
-        }
+        return true;
     }
 
     private void addToGroups(){
@@ -185,7 +160,7 @@ public class Main extends Plugin {
     public void load() {
         dataBase.loadData();
         mapManager.load();
-        loadJson(saveFile,(data)->{
+        Tools.loadJson(saveFile,(data)->{
             for (String k : loadSave.keys()) {
                 if (data.containsKey(k) && loadSave.containsKey(k)) {
                     loadSave.get(k).load((JSONObject) data.get(k));
@@ -195,7 +170,7 @@ public class Main extends Plugin {
     }
 
     public void save() {
-        saveJson(saveFile,"Save updated.",()->{
+        Tools.saveJson(saveFile,"Save updated.",()->{
             JSONObject saveData = new JSONObject();
             loadSave.keys().forEach((k) -> saveData.put(k, loadSave.get(k).save()));
             return saveData;
@@ -205,30 +180,30 @@ public class Main extends Plugin {
     }
 
     public void config(){
-        loadJson(configFile,(data)->{
+        Tools.loadJson(configFile,(data)->{
             JSONObject content=(JSONObject)data.get("loadout");
             for(Object o:content.keySet()){
-                loadout.getConfig().put((String)o,getInt(content.get(o)));
+                loadout.getConfig().put((String)o,Tools.getInt(content.get(o)));
             }
             content=(JSONObject)data.get("factory");
             for(Object o:content.keySet()){
-                factory.getConfig().put((String)o,getInt(content.get(o)));
+                factory.getConfig().put((String)o,Tools.getInt(content.get(o)));
             }
-            transportTime=getInt(data.get("transTime"));
+            transportTime=Tools.getInt(data.get("transTime"));
         },this::createDefaultConfig);
     }
 
     private void createDefaultConfig() {
-        saveJson(configFile,null,()->{
+        Tools.saveJson(configFile,null,()->{
             JSONObject saveData = new JSONObject();
             JSONObject load = new JSONObject();
             for(String o:loadout.getConfig().keys()){
-                load.put(o,getInt(loadout.getConfig().get(o)));
+                load.put(o,Tools.getInt(loadout.getConfig().get(o)));
             }
             saveData.put("loadout",load);
             load =new JSONObject();
             for(String o:factory.getConfig().keys()){
-                load.put(o,getInt(factory.getConfig().get(o)));
+                load.put(o,Tools.getInt(factory.getConfig().get(o)));
             }
             saveData.put("factory",load);
             saveData.put("transTime",180);
@@ -258,43 +233,14 @@ public class Main extends Plugin {
         return b.toString();
     }
 
-    public static boolean isNotInteger(String str) {
-        if (str == null || str.trim().isEmpty()) {
-            return true;
-        }
-        for (int i = 0; i < str.length(); i++) {
-            if (!Character.isDigit(str.charAt(i))) {
-                return true;
-            }
-        }
-        return false;
-    }
 
-    public static String report(String object, int amount) {
-        return "[orange]" + (object.equals("all") ? "all" : amount + " " + object) + "[]";
-    }
-
-
-
-    private boolean makeDir() {
-        File dir = new File(directory);
-        if (!dir.exists()) {
-            return dir.mkdir();
-        }
-        return true;
-    }
-
-    public static void loadingError(String address) {
-        Log.err(address + " has invalid type of value.It has to be integer." +
-                "Property will be set to default value.");
-    }
 
     public void invalidArg(Player player, String arg){
         player.sendMessage(prefix + "Invalid argument [scarlet]"+arg+"[], make sure you pick one of the options.");
     }
 
     public static Integer processArg(Player player, String what, String arg) {
-        if (isNotInteger(arg)) {
+        if (Tools.isNotInteger(arg)) {
             if(player==null){
                 Log.info(what + " has to be integer.[scarlet]" + arg + "[] is not.");
             }else {
@@ -318,81 +264,12 @@ public class Main extends Plugin {
         return false;
     }
 
-    public static Integer getInt(Object integer) {
-        if (integer instanceof Integer) {
-            return (int) integer;
-        }
-        if (integer instanceof Long) {
-            return ((Long) integer).intValue();
-        }
-        return null;
-    }
-
-    public static String getPlayerList(){
-        StringBuilder builder = new StringBuilder();
-        builder.append("[orange]Players to kick: \n");
-        for(Player p : playerGroup.all()){
-            if(p.isAdmin || p.con == null || p == player || Database.hasPerm(p,Perm.higher)) continue;
-
-            builder.append("[lightgray] ").append(p.name).append("[accent] (#").append(p.id).append(")\n");
-        }
-        return builder.toString();
-    }
-
-    public static Player findPlayer(String name) {
-       for(Player p:playerGroup){
-           String pName=cleanName(p.name);
-           if(pName.equalsIgnoreCase(name)){
-               return p;
-           }
-       }
-       return null;
-    }
-
-    public static String cleanName(String name){
-        return cleanName(name,true);
-    }
-
-    public static String cleanName(String name, boolean withRank){
-        while (name.contains("[")){
-            int first=name.indexOf("["),last=name.indexOf("]");
-            if(first==-1 || last==-1 || last<first) break;
-            else name=name.substring(0,first)+name.substring(last+1);
-        }
-        if(withRank){
-            while (name.contains("<")){
-                int first=name.indexOf("<"),last=name.indexOf(">");
-                name=name.substring(0,first)+name.substring(last+1);
-            }
-            name=name.replace(" ","_");
-        }
-
-        return name;
-    }
-
-    public Team getTeamByName(String name) {
-        for (Team t : Team.all()) {
-            if (t.name.equals(name)) {
-                return t;
-            }
-        }
-        return null;
-    }
-
     private void load_items() {
         for (Item i : content.items()) {
             if (i.type == ItemType.material) {
                 items.add(i);
             }
         }
-    }
-
-    public static String toString(Array<String> struct){
-        StringBuilder b=new StringBuilder();
-        for(String s :struct){
-            b.append(s).append(" ");
-        }
-        return b.toString();
     }
 
     @Override
@@ -486,16 +363,10 @@ public class Main extends Plugin {
             Log.info(pd.originalName + " is not kicked anymore.");
         });
 
-        handler.register("w-database", "[search/online]", "Shows database,list of all players that " +
+        handler.register("w-database", "<search/online>", "Shows database,list of all players that " +
                 "ewer been on server.Use search as in browser.", args ->{
-            Array<String> data;
-            if(args.length==1){
-                data=args[0].equals("online") ? Database.getOnlinePlayersIndexes() :Database.getAllPlayersIndexes(args[0]);
-            }else {
-                data=Database.getAllPlayersIndexes(null);
-            }
-            for(String s:data){
-                Log.info(cleanName(s));
+            for(String s:args[0].equals("online") ? Database.getOnlinePlayersIndexes() :Database.getAllPlayersIndexes(args[0])){
+                Log.info(Tools.cleanColors(s));
             }
                 });
 
@@ -528,17 +399,17 @@ public class Main extends Plugin {
                 Log.info(args[0] + " is not valid unit.");
                 return;
             }
-            if (isNotInteger(args[1])) {
+            if (Tools.isNotInteger(args[1])) {
                 Log.info("count has to be integer.");
                 return;
             }
             int count = Integer.parseInt(args[1]);
-            Player player = findPlayer(args[2]);
+            Player player = Tools.findPlayer(args[2]);
             if (player == null) {
                 Log.info("Player not found.");
                 return;
             }
-            Team team = args.length > 3 ? getTeamByName(args[3]) : Team.crux;
+            Team team = args.length > 3 ? Tools.getTeamByName(args[3]) : Team.crux;
             for (int i = 0; i < count; i++) {
                 BaseUnit unit = unitType.create(team);
                 unit.set(player.x, player.y);
@@ -553,20 +424,13 @@ public class Main extends Plugin {
             Log.info("Data removed");
         });
 
-        handler.register("w-apply-config","[factory/test/general/ranks]", "Applies the factory configuration,settings and " +
-                "loads test quescions.", args -> {
-            if(args.length==0){
-                factory.config();
-                config();
-                tester.loadQuestions();
-                dataBase.loadRanks();
-                return;
-            }
+        handler.register("w-config","<factory/test/general/ranks/bot>", "Applies the factory configuration,settings and " +
+                "loads test questions.", args -> {
             switch (args[0]){
                 case "factory":
                     factory.config();
                     break;
-                case "tast":
+                case "test":
                     tester.loadQuestions();
                     break;
                 case "general":
@@ -574,6 +438,9 @@ public class Main extends Plugin {
                     break;
                 case "ranks":
                     dataBase.loadRanks();
+                    break;
+                case "discord":
+                    bot.connect();
                     break;
                 default:
                     Log.info("Invalid argument.");
@@ -585,7 +452,7 @@ public class Main extends Plugin {
                 Log.info("trans-time is " + transportTime + ".");
                 return;
             }
-            if (isNotInteger(args[0])) {
+            if (Tools.isNotInteger(args[0])) {
                 Log.info(args[0] + " is not an integer.");
                 return;
             }
@@ -602,6 +469,13 @@ public class Main extends Plugin {
             }
             autoSave(frequency);
         });
+
+        handler.register("exit", "Exit the server application.", arg -> {
+            info("Shutting down server.");
+            net.dispose();
+            DiscordBot.disconnect();
+            Core.app.exit();
+        });
     }
 
     @Override
@@ -616,7 +490,7 @@ public class Main extends Plugin {
                 return;
             }
             if(args.length == 0) {
-                player.sendMessage(getPlayerList());
+                player.sendMessage(Tools.getPlayerList());
                 return;
             }
             actionManager.reason=args.length==2 ? args[1] : "Reason not provided";
@@ -630,7 +504,7 @@ public class Main extends Plugin {
                 player.sendMessage(prefix+"Only admin can start or disable emergency.");
                 return;
             }
-            actionManager.switchEmergency(args.length==1);
+            ActionManager.switchEmergency(args.length==1);
         });
 
         handler.<Player>register("maps","[page/rate/info/rules] [mapName/mapIdx/1-10]","Displays list maps,rates current map or " +
@@ -704,7 +578,7 @@ public class Main extends Plugin {
                     return;
                 case "price":
                     if(notEnoughArgs(player,2,args)) return;
-                    int amount = args.length == 2 || isNotInteger(args[2]) ? 1 : Integer.parseInt(args[2]);
+                    int amount = args.length == 2 || Tools.isNotInteger(args[2]) ? 1 : Integer.parseInt(args[2]);
                     Call.onInfoMessage(player.con, factory.price(player, args[1], amount));
                     return;
                 case "send":
@@ -725,7 +599,7 @@ public class Main extends Plugin {
             Package p = factory.verify(player, args[1],amount, send);
             if (p == null) return;
 
-            vote.aVote(factory, p, args[0] + " " + report(p.object, p.amount) + " units");
+            vote.aVote(factory, p, args[0] + " " + Tools.report(p.object, p.amount) + " units");
         });
 
         handler.<Player>register("build-core", "<small/normal/big>", "Makes new core.",
@@ -817,41 +691,10 @@ public class Main extends Plugin {
                 "Search for player by name, display all chinese or russian players, all online players," +
                         "all players with specified rank or sorted list of players.You can optionally invert the " +
                         "list when using sort option.",(arg,player)->{
-            Array<String> res;
-            if(arg.length==1) {
-                switch (arg[0]) {
-                    case "rank":
-                        player.sendMessage(prefix + "Available ranks: " + Arrays.toString(Rank.values()) +
-                                "\nAvailable special ranks:" + Database.ranks.toString());
-                        return;
-                    case "sort":
-                        player.sendMessage(prefix + "Available sort types: " + Arrays.toString(Stat.values()));
-                        return;
-                    case "chinese":
-                        res = Database.getAllChinesePlayersIndexes();
-                        break;
-                    case "russian":
-                        res = Database.getAllRussianPlayersIndexes();
-                        break;
-                    case "online":
-                        res = Database.getOnlinePlayersIndexes();
-                        break;
-                    default:
-                        res = Database.getAllPlayersIndexes(arg[0]);
-                        break;
-                }
-
-            }else {
-                res =arg[0].equals("sort") ? Database.getSorted(arg[1]):Database.getAllPlayersIndexesByRank(arg[1]);
-                if (res == null) {
-                    player.sendMessage(prefix + "Invalid sort type, for list of available see /search sort");
-                    return;
-                }
-                if(arg.length==3){
-                    res.reverse();
-                }
-            }
-            for(int i=0;i<200 && i<res.size;i++){
+            Array<String> res = Tools.getSearchResult(arg,player,null);
+            if(res==null) return;
+            int begin = Math.max(0,res.size-200);
+            for(int i=begin;i<res.size;i++){
                 player.sendMessage(res.get(i));
             }
             if(res.isEmpty()){
@@ -907,7 +750,7 @@ public class Main extends Plugin {
 
             }
             if(args.length == 0) {
-                player.sendMessage(getPlayerList());
+                player.sendMessage(Tools.getPlayerList());
                 return;
             }
 
@@ -937,7 +780,7 @@ public class Main extends Plugin {
             for(String s:arg){
                 b.append(s).append(" ");
             }
-            Player other=findPlayer(arg[0]);
+            Player other=Tools.findPlayer(arg[0]);
             if(other==null){
                 player.sendMessage(prefix+"Player not found.");
                 return;

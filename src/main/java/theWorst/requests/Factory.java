@@ -15,6 +15,7 @@ import mindustry.type.UnitType;
 import org.json.simple.JSONObject;
 import theWorst.Main;
 import theWorst.Package;
+import theWorst.Tools;
 import theWorst.dataBase.Database;
 import theWorst.interfaces.Interruptible;
 import theWorst.interfaces.LoadSave;
@@ -101,7 +102,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
         for (Request r:requests){
             free-=1;
             b.append(String.format("%d:%02d", r.time / 60, r.time % 60))
-                .append(r.stoppable ? " trans ":" build ").append(Main.report(r.aPackage.object,r.aPackage.amount));
+                .append(r.stoppable ? " trans ":" build ").append(Tools.report(r.aPackage.object,r.aPackage.amount));
             b.append(colon);
         }
         while (free>0){
@@ -119,7 +120,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
             return;
         }
         stats.get(object)[UNIT_COUNT] += amount;
-        Call.sendMessage(Main.prefix + Main.report(object, amount) + " are going back to base.");
+        Call.sendMessage(Main.prefix + Tools.report(object, amount) + " are going back to base.");
     }
 
     @Override
@@ -145,7 +146,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                     for (BaseUnit u : units) {
                         u.add();
                     }
-                    Call.sendMessage(Main.prefix + "[green]" + Main.report(p.object, p.amount) + " units arrived.");
+                    Call.sendMessage(Main.prefix + "[green]" + Tools.report(p.object, p.amount) + " units arrived.");
                 }
             }, this, p, true);
             requests.add(req);
@@ -165,7 +166,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                 @Override
                 public void run() {
                     stats.get(p.object)[UNIT_COUNT] += p.amount;
-                    Call.sendMessage(Main.prefix + "[green]" + Main.report(p.object, p.amount) + " wos finished and are waiting in a hangar.");
+                    Call.sendMessage(Main.prefix + "[green]" + Tools.report(p.object, p.amount) + " wos finished and are waiting in a hangar.");
                 }
             }, this, p, false);
             requests.add(req);
@@ -213,7 +214,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                 return null;
             }
             if (uCount < amount) {
-                player.sendMessage(Main.prefix + "There are only" + Main.report(object, uCount) + ".");
+                player.sendMessage(Main.prefix + "There are only" + Tools.report(object, uCount) + ".");
                 return null;
             }
             int x = (int) player.x;
@@ -277,7 +278,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
     public String price(Player player, String unitName, int amount) {
         if (!stats.containsKey(unitName)) {
             player.sendMessage(Main.prefix + "There is no [scarlet]" + unitName + "[] only " +
-                    Main.toString(stats.keys().toArray()) + ".");
+                    Tools.toString(stats.keys().toArray()) + ".");
             return null;
         }
         StringBuilder message = new StringBuilder();
@@ -313,17 +314,13 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
             if (!stats.containsKey(name)) {
                 continue;
             }
-            Integer val = Main.getInt(data.get(name));
-            if (val == null) {
-                Main.loadingError("Factory/save/" + name);
-                continue;
-            }
+            Integer val = Tools.getInt(data.get(name));
             stats.get(name)[UNIT_COUNT] = val;
         }
     }
 
     public void config() {
-        Main.loadJson(configFile,
+        Tools.loadJson(configFile,
                 (settings)->{
                     for (Object setting : settings.keySet()) {
                         if (getUnitByName((String) setting) == null) {
@@ -346,13 +343,8 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                                 fail = true;
                                 break;
                             }
-                            Integer val = Main.getInt(jsInfo.get(key));
-                            if (val == null) {
-                                Main.loadingError("Loadout/save/" + key);
-                                data[idx] = 1;
-                            } else {
-                                data[idx] = val;
-                            }
+                            Integer val = Tools.getInt(jsInfo.get(key));
+                            data[idx] = val;
                             idx++;
                         }
                         if (fail) {

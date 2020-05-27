@@ -7,6 +7,7 @@ import arc.util.Timer;
 import mindustry.entities.type.Player;
 import org.json.simple.JSONArray;
 import theWorst.Main;
+import theWorst.Tools;
 import theWorst.dataBase.Database;
 import theWorst.dataBase.Perm;
 import theWorst.dataBase.PlayerData;
@@ -21,7 +22,8 @@ public class Tester {
     ArrayMap<String,int[]> tested=new ArrayMap<>();
 
     public void loadQuestions(){
-        Main.loadJson(Main.directory+testFile,(test)->{
+        Tools.loadJson(Main.directory+testFile,(test)->{
+            questions.clear();
             for(Object o:test.keySet()){
                 JSONArray options=(JSONArray) test.get(o);
                 Array<String> opt=new Array<>();

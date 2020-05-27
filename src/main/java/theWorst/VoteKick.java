@@ -30,7 +30,7 @@ public class VoteKick{
             found = playerGroup.find(p -> p.name.equalsIgnoreCase(arg));
         }
         if(found == null){
-            found=Main.findPlayer(arg);
+            found=Tools.findPlayer(arg);
             if(found == null) {
                 player.sendMessage(Main.prefix+"No player[orange]'" + arg + "'[] found.");
                 return;

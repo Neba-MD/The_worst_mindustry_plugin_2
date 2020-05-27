@@ -15,6 +15,7 @@ import org.json.simple.JSONObject;
 import theWorst.Hud;
 import theWorst.Main;
 import theWorst.Package;
+import theWorst.Tools;
 import theWorst.dataBase.Database;
 import theWorst.interfaces.Interruptible;
 import theWorst.interfaces.LoadSave;
@@ -100,7 +101,7 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
 
     @Override
     public void fail(String object, int amount) {
-        Call.sendMessage(Main.prefix+"Ship with " + Main.report(object, amount)
+        Call.sendMessage(Main.prefix+"Ship with " + Tools.report(object, amount)
                 + " is going back to loadout");
         storage[getItemIdx(getItemByName(object))] += amount;
 
@@ -123,7 +124,7 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
                 @Override
                 public void run() {
                     core.items.add(targetItem, finalAmount);
-                    Call.sendMessage(Main.prefix + "[green]" + Main.report(p.object, p.amount) + " arrived to core.");
+                    Call.sendMessage(Main.prefix + "[green]" + Tools.report(p.object, p.amount) + " arrived to core.");
                 }
             };
             requests.add(new Request(Main.transportTime, task, this, p, true));
@@ -221,7 +222,7 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
         for (Request r:requests){
             free-=1;
             b.append(String.format("%d:%02d", r.time / 60, r.time % 60))
-                    .append(" trans ").append(Main.report(r.aPackage.object,r.aPackage.amount));
+                    .append(" trans ").append(Tools.report(r.aPackage.object,r.aPackage.amount));
             b.append(colon);
         }
         while (free>0){
@@ -248,12 +249,8 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
         int idx = 0;
         for (Item item : Main.items) {
 
-            Integer val = Main.getInt(data.get(item.name));
-            if (val == null) {
-                Main.loadingError("Loadout/save/" + item.name);
-            } else {
-                storage[idx] = val;
-            }
+            Integer val = Tools.getInt(data.get(item.name));
+            storage[idx] = val;
             idx++;
         }
     }

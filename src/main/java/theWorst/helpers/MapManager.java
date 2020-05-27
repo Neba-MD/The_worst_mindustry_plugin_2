@@ -12,6 +12,7 @@ import mindustry.maps.Map;
 import theWorst.Hud;
 import theWorst.Main;
 import theWorst.Package;
+import theWorst.Tools;
 import theWorst.interfaces.Votable;
 
 import java.io.*;
@@ -89,7 +90,7 @@ public class MapManager implements Votable {
 
     public static Map findMap(String object) {
         Array<Map> mapList = maps.all();
-        if (Main.isNotInteger(object)) {
+        if (Tools.isNotInteger(object)) {
             return maps.all().find(m -> m.name().equalsIgnoreCase(object.replace('_', ' '))
                     || m.name().equalsIgnoreCase(object));
         }

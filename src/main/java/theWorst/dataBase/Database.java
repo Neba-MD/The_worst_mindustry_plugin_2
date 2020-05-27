@@ -16,16 +16,13 @@ import mindustry.type.ItemStack;
 import mindustry.world.blocks.storage.CoreBlock;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
-import theWorst.BotThread;
-import theWorst.Hud;
-import theWorst.Main;
+import theWorst.*;
 import theWorst.Package;
 import theWorst.interfaces.LoadSave;
 import theWorst.interfaces.Votable;
 import theWorst.requests.Loadout;
 
 import java.io.*;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 
@@ -295,10 +292,10 @@ public class Database implements Votable, LoadSave {
     }
 
     public static PlayerData findData(String arg){
-        if(!Main.isNotInteger(arg)){
+        if(!Tools.isNotInteger(arg)){
             return getData(Integer.parseInt(arg));
         }
-        Player p=Main.findPlayer(arg);
+        Player p= Tools.findPlayer(arg);
         if(p!=null) return getData(p);
         return getData(arg);
     }
@@ -426,14 +423,10 @@ public class Database implements Votable, LoadSave {
             if(reason==null){
                 reason="Reason not provided.";
             }
-            if(player==null){
-
-            }
             Rank prevRank = pd.trueRank;
             Database.setRank(pd,r );
-            if(BotThread.log!=null){
-                BotThread.log.sendMessage(String.format("%s (%d) %s -> %s \n-by: %s \n-reason: %s",
-                        pd.originalName,pd.serverId,prevRank.name(),r.name(),by,reason));
+            if(DiscordBot.activeLog()){
+                DiscordBot.onRankChange(pd.originalName,pd.serverId,prevRank.name(),r.name(),by,reason);
             }
             Log.info("Rank of player " + pd.originalName + " is now " + pd.rank.name() + ".");
             Call.sendMessage("Rank of player [orange]"+ pd.originalName+"[] is now " +pd.rank.getName() +".");
@@ -541,7 +534,7 @@ public class Database implements Votable, LoadSave {
     }
 
     public void loadRanks(){
-        Main.loadJson(rankFile,(data)->{
+        Tools.loadJson(rankFile,(data)->{
             ranks.clear();
             for(Object o:data.keySet()){
                 String key=(String)o;
@@ -552,7 +545,7 @@ public class Database implements Votable, LoadSave {
     }
 
     private void createDefaultRankConfig() {
-        Main.saveJson(rankFile,
+        Tools.saveJson(rankFile,
                 "Default "+rankFile+" created.Edit it adn the use apply config Command",
                 ()->{
                     JSONObject data=new JSONObject();

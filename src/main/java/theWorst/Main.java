@@ -45,6 +45,7 @@ public class Main extends Plugin {
     public static final String noPerm = prefix+"You have no permission to do this. Please submit your appeal in discord";
 
     public static final String[] itemIcons = {"\uF838", "\uF837", "\uF836", "\uF835", "\uF832", "\uF831", "\uF82F", "\uF82E", "\uF82D", "\uF82C"};
+    public static String welcomeMessage;
     ArrayMap<String, LoadSave> loadSave = new ArrayMap<>();
     public static ArrayMap<String, Requester> configured = new ArrayMap<>();
 
@@ -94,7 +95,7 @@ public class Main extends Plugin {
                         return null;
                     }
                     msgColor="[pink]";
-                }else if((message.equals("y") || message.equals("n")) && vote.voting){
+                }else if(Tools.isCommandRelated(message) && vote.voting){
                     vote.addVote(player,message);
                     return null;
                 }
@@ -106,6 +107,7 @@ public class Main extends Plugin {
             //so we can replace it with our own messages
             Administration.Config.showConnectMessages.set(false);
             load_items();
+            bot = new DiscordBot();
             serverPlayer = new ServerPlayer();
             mapManager = new MapManager();
             mapManager.cleanup();
@@ -122,7 +124,7 @@ public class Main extends Plugin {
             autoSave(defaultAutoSaveFrequency);
             hud.update();
             hud.startCycle(10);
-            bot = new DiscordBot();
+
 
         });
     }
@@ -144,6 +146,7 @@ public class Main extends Plugin {
         loadSave.put("factory", factory);
         loadSave.put("Database",dataBase);
         loadSave.put("hud",hud);
+        loadSave.put("bot",bot);
         configured.put("loadout", loadout);
         configured.put("factory", factory);
     }
@@ -189,25 +192,27 @@ public class Main extends Plugin {
             for(Object o:content.keySet()){
                 factory.getConfig().put((String)o,Tools.getInt(content.get(o)));
             }
+            welcomeMessage=(String) data.get("welcomeMessage");
             transportTime=Tools.getInt(data.get("transTime"));
         },this::createDefaultConfig);
     }
 
     private void createDefaultConfig() {
         Tools.saveJson(configFile,null,()->{
-            JSONObject saveData = new JSONObject();
+            JSONObject data = new JSONObject();
             JSONObject load = new JSONObject();
             for(String o:loadout.getConfig().keys()){
                 load.put(o,Tools.getInt(loadout.getConfig().get(o)));
             }
-            saveData.put("loadout",load);
+            data.put("loadout",load);
             load =new JSONObject();
             for(String o:factory.getConfig().keys()){
                 load.put(o,Tools.getInt(factory.getConfig().get(o)));
             }
-            saveData.put("factory",load);
-            saveData.put("transTime",180);
-            return saveData;
+            data.put("factory",load);
+            data.put("transTime",180);
+            data.put("welcomeMessage",null);
+            return data;
         });
     }
 
@@ -464,7 +469,7 @@ public class Main extends Plugin {
             Integer frequency = processArg(null, "Frequency", args[0]);
             if (frequency == null) return;
             if (frequency == 0) {
-                Log.info("If you want kill-server command so badly, you can open an issue on github.");
+                info("If you want kill-server command so badly, you can open an issue on github.");
                 return;
             }
             autoSave(frequency);
@@ -472,6 +477,7 @@ public class Main extends Plugin {
 
         handler.register("exit", "Exit the server application.", arg -> {
             info("Shutting down server.");
+            save();
             net.dispose();
             DiscordBot.disconnect();
             Core.app.exit();
@@ -762,6 +768,10 @@ public class Main extends Plugin {
                         "become verified player.",(args, player) -> tester.processAnswer(player,args[0]));
 
         handler.<Player>register("set-rank","<playerName/uuid/ID> <rank/restart> [reason...]","Command for admins.",(args,player)->{
+            if(!player.isAdmin){
+                player.sendMessage("You are not an admin.");
+                return;
+            }
             switch (Database.setRankViaCommand(player,args[0],args[1],args.length==3 ? args[2] : null)){
                 case notFound:
                     player.sendMessage(prefix+"Player not found");

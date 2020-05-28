@@ -54,7 +54,7 @@ public class Vote implements Interruptible {
             return;
         }
         if (Database.isGriefer(requester)){
-            player.sendMessage(Main.noPerm);
+            requester.sendMessage(Main.noPerm);
             return;
         }
         if(isRecent(requester)){

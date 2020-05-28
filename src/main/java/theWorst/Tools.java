@@ -2,8 +2,11 @@ package theWorst;
 
 import arc.struct.Array;
 import arc.util.Log;
+import arc.util.Tmp;
 import mindustry.entities.type.Player;
 import mindustry.game.Team;
+import mindustry.io.MapIO;
+import mindustry.world.Tile;
 import org.javacord.api.entity.channel.TextChannel;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -15,15 +18,16 @@ import theWorst.dataBase.Stat;
 import theWorst.interfaces.runLoad;
 import theWorst.interfaces.runSave;
 
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
+import java.util.Set;
 
-import static mindustry.Vars.player;
-import static mindustry.Vars.playerGroup;
+import static mindustry.Vars.*;
 
 public class Tools {
     public static String toString(Array<String> struct){
@@ -144,6 +148,17 @@ public class Tools {
         Files.copy(in, Paths.get(dest), StandardCopyOption.REPLACE_EXISTING);
     }
 
+    public static BufferedImage getMiniMapImg() {
+        BufferedImage img = new BufferedImage(world.width(), world.height(),BufferedImage.TYPE_INT_ARGB);
+        for(int x = 0; x < img.getWidth(); x++){
+            for(int y = 0; y < img.getHeight(); y++){
+                Tile tile = world.tile(x,y);
+                img.setRGB(x, img.getHeight() - 1 - y, Tmp.c1.set(MapIO.colorFor(tile.floor(), tile.block(), tile.overlay(), tile.getTeam())).argb8888());
+            }
+        }
+        return img;
+    }
+
     public static class JsonMap {
         private final JSONObject data;
         public String[] keys;
@@ -226,5 +241,26 @@ public class Tools {
             }
         }
         return res;
+    }
+
+    public static String findBestMatch(String word, Set<String> pool){
+        int bestPoints = 0;
+        String bestMatch = null;
+        for(String s:pool){
+            String shorter = word.length()>s.length() ? s:word;
+            int points=0;
+            for(int i=0;i<shorter.length();i++){
+                if(word.charAt(i)==s.charAt(i)) points++;
+            }
+            if(points>bestPoints) {
+                bestPoints=points;
+                bestMatch=s;
+            }
+        }
+        return bestMatch;
+    }
+
+    public static boolean isCommandRelated(String message){
+        return message.startsWith("/") || message.equalsIgnoreCase("y") || message.equalsIgnoreCase("n");
     }
 }

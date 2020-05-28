@@ -130,6 +130,10 @@ public class Database implements Votable, LoadSave {
             if(!data.containsKey(uuid)) {
                 data.put(uuid,new PlayerData(player));
                 Hud.addAd("We have a newcomer [orange]"+player.name+"[white].",30);
+                if(Main.welcomeMessage!=null){
+                    Call.onInfoMessage(player.con,Main.welcomeMessage);
+                }
+
                 pd=getData(uuid);
                 for(Setting s:Setting.values()){
                     pd.settings.add(s.name());
@@ -171,6 +175,7 @@ public class Database implements Votable, LoadSave {
                     Call.sendMessage(Main.prefix+"[orange]"+p.name+"[] is not "+pd.rank.getName()+" anymore.");
                     pd.rank=pd.trueRank;
                     updateName(p,pd);
+                    p.isAdmin=pd.trueRank.isAdmin;
                 }
             }
         },0,60);

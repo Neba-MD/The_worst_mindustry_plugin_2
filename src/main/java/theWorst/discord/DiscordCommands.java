@@ -4,6 +4,7 @@ import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.event.message.MessageCreateEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
 import theWorst.DiscordBot;
+import theWorst.Tools;
 
 import java.awt.*;
 import java.util.HashMap;
@@ -19,10 +20,6 @@ public class DiscordCommands implements MessageCreateListener {
 
     public boolean hasCommand(String command){
         return commands.containsKey(command);
-    }
-
-    public boolean isRestricted(String command){
-        return commands.get(command) instanceof RoleRestrictedCommand;
     }
 
     @Override
@@ -46,7 +43,13 @@ public class DiscordCommands implements MessageCreateListener {
 
     private void runCommand(String name, CommandContext ctx) {
         Command command=commands.get(name);
-        if(command==null) return;
+        if(command==null){
+            String match = Tools.findBestMatch(ctx.args[0],commands.keySet());
+            ctx.reply("Sorry i don t know this command.");
+            if(match==null) return;
+            ctx.reply("Did you mean "+match+"?");
+            return;
+        }
         if(!command.hasPerm(ctx)){
             EmbedBuilder msg= new EmbedBuilder()
                     .setColor(Color.red)

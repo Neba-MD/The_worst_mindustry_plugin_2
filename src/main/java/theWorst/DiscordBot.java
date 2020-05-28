@@ -5,6 +5,7 @@ import arc.files.Fi;
 import arc.struct.Array;
 import arc.util.Log;
 import arc.util.Timer;
+import arc.util.serialization.Jval;
 import mindustry.Vars;
 import mindustry.core.GameState;
 import mindustry.entities.type.Player;
@@ -21,7 +22,6 @@ import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.entity.channel.TextChannel;
 import org.javacord.api.entity.message.Message;
 import org.javacord.api.entity.message.MessageAttachment;
-import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.permission.Role;
 import org.javacord.api.event.message.MessageCreateEvent;
@@ -31,25 +31,29 @@ import theWorst.dataBase.PlayerData;
 import theWorst.dataBase.Rank;
 import theWorst.discord.*;
 import theWorst.helpers.MapManager;
+import theWorst.interfaces.LoadSave;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static mindustry.Vars.*;
+import static mindustry.Vars.data;
 
-public class DiscordBot {
+public class DiscordBot implements LoadSave {
     public static String prefix="!";
     private final int maxMessageLength=2000;
 
     private static   DiscordApi api;
+
+    private boolean setup=false;
     
     private final MapParser mapParser = new MapParser();
+    private final DiscordCommands handler = new DiscordCommands();
 
     private static final HashMap<String, Role> roles = new HashMap<>();
     private static final HashMap<String, TextChannel> channels = new HashMap<>();
@@ -66,6 +70,7 @@ public class DiscordBot {
     }
 
     public void connect(){
+        setup=false;
         if(api!=null) {
             api.disconnect();
             api=null;
@@ -111,18 +116,16 @@ public class DiscordBot {
 
         if(api==null) return;
 
-        DiscordCommands handler = new DiscordCommands();
+
         api.addMessageCreateListener(handler);
         registerCommands(handler);
-        registerRestrictedCommands(handler);
 
 
         if(channels.containsKey("linked")) {
             TextChannel linkedChannel = channels.get("linked");
-
-            netServer.admins.addChatFilter((player,message)->{
-                linkedChannel.sendMessage("**"+Tools.cleanName(player.name)+"** : "+message.substring(message.indexOf("]")+1));
-                return message;
+            Events.on(EventType.PlayerChatEvent.class,e->{
+                if(Tools.isCommandRelated(e.message)) return;
+                linkedChannel.sendMessage("**"+Tools.cleanName(e.player.name)+"** : "+e.message.substring(e.message.indexOf("]")+1));
             });
 
             api.addMessageCreateListener((event)->{
@@ -135,13 +138,15 @@ public class DiscordBot {
 
         if(channels.containsKey("commandLog")){
             Events.on(EventType.PlayerChatEvent.class,e->{
-                if(!e.message.startsWith("/") && !(e.message.equals("y") || e.message.equals("n"))) return;
+                if(!Tools.isCommandRelated(e.message)) return;
                 PlayerData pd = Database.getData(e.player);
                 channels.get("commandLog").sendMessage(String.format("**%s** - %s (%d): %s",
                         pd.originalName,pd.trueRank.name(),pd.serverId,e.message));
             });
         }
+        setup=true;
     }
+
 
     public static void onRankChange(String name, long serverId, String prev, String now, String by, String reason) {
         channels.get("log").sendMessage(String.format("**%s** (%d) **%s** -> **%s** \n**by:** %s \n**reason:** %s",
@@ -208,7 +213,36 @@ public class DiscordBot {
         return false;
     }
 
+    @Override
+    public void load(JSONObject data) {
+        if(!setup) return;
+        for(Object o:data.keySet()){
+            String command=(String)o;
+            String role=(String)data.get(o);
+            Role found=null;
+            for(Role r:roles.values()){
+                if(r.getName().equals(role)){
+                    found=r;
+                }
+            }
+            handler.commands.get(command).role=found;
+        }
+    }
+
+    @Override
+    public JSONObject save() {
+        JSONObject data=new JSONObject();
+        if(!setup) return data;
+        for(String command:handler.commands.keySet()){
+            Role role=handler.commands.get(command).role;
+            if(role==null) continue;
+            data.put(command,role.getName());
+        }
+        return data;
+    }
+
     private void registerCommands(DiscordCommands handler) {
+        Role admin = roles.get("admin");
         handler.registerCommand(new Command("help") {
             {
                 description = "Shows all commands and their description.";
@@ -225,12 +259,8 @@ public class DiscordBot {
                 for(String s:handler.commands.keySet()){
                     Command c =handler.commands.get(s);
                     StringBuilder to = sb;
-                    boolean isRestricted =c instanceof RoleRestrictedCommand;
-                    if(isRestricted) to =sb2;
-                    to.append("**").append(prefix).append(c.name).append("**");
-                    if(isRestricted) to.append("-").append(((RoleRestrictedCommand)c).role.getName());
-                    to.append("-").append(c.argStruct);
-                    to.append("-").append(c.description).append("\n");
+                    if(c.role!=null) to =sb2;
+                    to.append(c.getInfo()).append("\n");
                 }
                 ctx.channel.sendMessage(eb.setDescription(sb.toString()));
                 ctx.channel.sendMessage(eb2.setDescription(sb2.toString()));
@@ -251,6 +281,7 @@ public class DiscordBot {
                             .addInlineField("players",String.valueOf(Vars.playerGroup.size()))
                             .addInlineField("wave",String.valueOf(Vars.state.wave))
                             .addInlineField("enemies",String.valueOf(Vars.state.enemies))
+                            .setImage(Tools.getMiniMapImg())
                             .setColor(Color.green);
                 } else {
                     eb
@@ -403,37 +434,36 @@ public class DiscordBot {
             }
         });
 
-    }
-
-    private void registerRestrictedCommands(DiscordCommands handler){
-        Role admin = roles.get("admin");
-
-        handler.registerCommand(new RoleRestrictedCommand("setrolerestrict","<command> <role...>") {
+        handler.registerCommand(new Command("restrict","<command> <role/remove>") {
             {
-                description = "Sets role of role restricted command.";
+                description = "Sets role restriction for command.";
                 role = admin;
             }
             @Override
             public void run(CommandContext ctx) {
-                if(!handler.hasCommand(ctx.args[0]) || !handler.isRestricted(ctx.args[0])){
-                    ctx.reply("Invalid command. It has to exist and be role restricted.");
+                if(!handler.hasCommand(ctx.args[0]) ){
+                    String match = Tools.findBestMatch(ctx.args[0],handler.commands.keySet());
+                    ctx.reply("Sorry i don t know this command.");
+                    if(match==null) return;
+                    ctx.reply("Did you mean "+match+"?");
                     return;
                 }
-                StringBuilder roleName = new StringBuilder();
-                for(int i=1;i<ctx.args.length;i++){
-                    roleName.append(ctx.args[i]);
+                if(ctx.args[1].equals("remove")){
+                    handler.commands.get(ctx.args[0]).role=null;
+                    ctx.reply(String.format("Restriction from %s wos removed.", ctx.args[0]));
                 }
-                if(roles.containsKey(roleName.toString())){
-                    ctx.reply("this role does not exist.Available roles"+roles.keySet().toString());
+                if(!roles.containsKey(ctx.args[1])){
+                    ctx.reply("It might be little confusing but role names match names in the config file.\n"
+                            +roles.keySet().toString());
                     return;
                 }
-                ((RoleRestrictedCommand)handler.commands.get(ctx.args[0])).role=roles.get(ctx.args[1]);
+                handler.commands.get(ctx.args[0]).role=roles.get(ctx.args[1]);
 
-                ctx.reply(String.format("Role of %s is now %s.", ctx.args[0],roleName.toString()));
+                ctx.reply(String.format("Role of %s is now %s.", ctx.args[0], ctx.args[1]));
             }
         });
 
-        handler.registerCommand(new RoleRestrictedCommand("addmap") {
+        handler.registerCommand(new Command("addmap") {
             {
                 description = "Adds map to server.";
                 role=admin;
@@ -469,7 +499,7 @@ public class DiscordBot {
             }
         });
 
-        handler.registerCommand(new RoleRestrictedCommand("removemap","<name/id>") {
+        handler.registerCommand(new Command("removemap","<name/id>") {
             {
                 description = "Removes map from server.";
                 role=admin;
@@ -504,7 +534,7 @@ public class DiscordBot {
             }
         });
 
-        handler.registerCommand(new RoleRestrictedCommand("emergency","[off]") {
+        handler.registerCommand(new Command("emergency","[off]") {
             {
                 description = "Initialises or terminates emergency, available just for admins.";
                 role = admin;
@@ -520,7 +550,7 @@ public class DiscordBot {
             }
         });
         
-        handler.registerCommand(new RoleRestrictedCommand("setrank","<name/id> <rank> [reason...]") {
+        handler.registerCommand(new Command("setrank","<name/id> <rank> [reason...]") {
             {
                 description = "Sets rank of the player, available just for admins.";
                 role = admin;
@@ -546,4 +576,6 @@ public class DiscordBot {
             }
         });
     }
+
+
 }

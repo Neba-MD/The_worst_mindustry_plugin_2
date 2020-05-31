@@ -31,6 +31,7 @@ import theWorst.requests.Requester;
 
 import java.io.File;
 import java.util.Arrays;
+import java.util.HashMap;
 
 import static arc.util.Log.info;
 import static java.lang.Math.min;
@@ -41,8 +42,8 @@ public class Main extends Plugin {
     static final String saveFile =directory + "save.json";
     static final String configFile =directory + "settings.json";
 
-    public static final String prefix = "[coral][[[scarlet]Server[]]:[]";
-    public static final String noPerm = prefix+"You have no permission to do this. Please submit your appeal in discord";
+
+
 
     public static final String[] itemIcons = {"\uF838", "\uF837", "\uF836", "\uF835", "\uF832", "\uF831", "\uF82F", "\uF82E", "\uF82D", "\uF82C"};
     public static String welcomeMessage;
@@ -54,6 +55,7 @@ public class Main extends Plugin {
     public static Array<Item> items = new Array<>();
     public final int pageSize=15;
     static Array<Interruptible> interruptibles = new Array<>();
+    private HashMap<String,String> dmMap = new HashMap<>();
 
 
 
@@ -83,6 +85,10 @@ public class Main extends Plugin {
 
         Events.on(ServerLoadEvent.class, e -> {
             netServer.admins.addChatFilter((player,message)->{
+                if(!Database.hasEnabled(player,Setting.chat)){
+                    Tools.errMessage(player,"You have chat disabled, use \"/set chat on\" to enable it.");
+                    return null;
+                }
                 PlayerData pd=Database.getData(player);
                 String msgColor="["+pd.textColor+"]";
                 pd.lastAction= Time.millis();
@@ -91,7 +97,7 @@ public class Main extends Plugin {
                 }
                 if(pd.trueRank==Rank.griefer){
                     if(Time.timeSinceMillis(pd.lastMessage)<10000L){
-                        player.sendMessage(noPerm);
+                        Tools.noPerm(player);
                         return null;
                     }
                     msgColor="[pink]";
@@ -102,7 +108,8 @@ public class Main extends Plugin {
                 pd.lastMessage=Time.millis();
                 pd.messageCount++;
                 Database.updateRank(player,Stat.messageCount);
-                return msgColor+message;
+                Tools.sendChatMessage(player,msgColor+message);
+                return null;
             });
             //so we can replace it with our own messages
             Administration.Config.showConnectMessages.set(false);
@@ -241,26 +248,34 @@ public class Main extends Plugin {
 
 
     public void invalidArg(Player player, String arg){
-        player.sendMessage(prefix + "Invalid argument [scarlet]"+arg+"[], make sure you pick one of the options.");
+        Tools.errMessage(player, "Invalid argument [orange]"+arg+"[], make sure you pick one of the options.");
     }
 
     public static Integer processArg(Player player, String what, String arg) {
-        if (Tools.isNotInteger(arg)) {
+        if(arg.length()>6){
+            if(player==null){
+                Log.info("Too long number! Max 6 digits.");
+            }else {
+                Tools.errMessage(player,"Too long number! Max 6 digits.");
+            }
+            return null;
+        }
+        if (!Strings.canParsePostiveInt(arg)) {
             if(player==null){
                 Log.info(what + " has to be integer.[scarlet]" + arg + "[] is not.");
             }else {
-                player.sendMessage(prefix + what + " has to be integer.[scarlet]" + arg + "[] is not.");
+                Tools.errMessage(player, what + " has to be integer.[orange]" + arg + "[] is not.");
             }
             return null;
         }
         return Integer.parseInt(arg);
     }
 
-    public boolean notEnoughArgs(Player p,int amount,String[] args ){
+    public boolean notEnoughArgs(Player player,int amount,String[] args ){
         if(args.length<amount){
             String m="Not enough arguments, expected at least "+amount+".";
-            if(p!=null){
-                p.sendMessage(prefix+m);
+            if(player!=null){
+                Tools.errMessage(player,m);
             }else{
                 Log.info(m);
             }
@@ -280,9 +295,6 @@ public class Main extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         handler.removeCommand("admin");
-
-        handler.register("test","",args->{
-                });
 
         handler.register("w-help","<ranks/factory/hud>","Shows better explanation and more information" +
                 "about entered topic.",args->{
@@ -404,7 +416,7 @@ public class Main extends Plugin {
                 Log.info(args[0] + " is not valid unit.");
                 return;
             }
-            if (Tools.isNotInteger(args[1])) {
+            if (!Strings.canParsePostiveInt(args[1])) {
                 Log.info("count has to be integer.");
                 return;
             }
@@ -457,7 +469,7 @@ public class Main extends Plugin {
                 Log.info("trans-time is " + transportTime + ".");
                 return;
             }
-            if (Tools.isNotInteger(args[0])) {
+            if (!Strings.canParsePostiveInt(args[0])) {
                 Log.info(args[0] + " is not an integer.");
                 return;
             }
@@ -488,15 +500,26 @@ public class Main extends Plugin {
     public void registerClientCommands(CommandHandler handler) {
         handler.removeCommand("vote");
         handler.removeCommand("votekick");
+        handler.removeCommand("t");
+
+        handler.<Player>register("mute","<name/id> [unmute]","Mutes player for you.",(args,player)->{
+            Player target = Tools.findPlayer(args[0]);
+            if(target==null){
+                Tools.errMessage(player,"Player does not exist or is not connected.");
+                return;
+            }
+            Database.switchSetting(player,target.uuid,args.length==2);
+            Tools.message(target.name+" is "+(args.length==2 ? "unmuted":"muted")+".");
+        });
 
         handler.<Player>register("mkgf","[playerName] [reason...]","Adds, or removes if payer is marked, griefer mark of given " +
                         "player name.",(args, player) ->{
             if(playerGroup.size() < 3 && !player.isAdmin) {
-                player.sendMessage(prefix+"At least 3 players are needed to mark a griefer.");
+                Tools.errMessage(player,"At least 3 players are needed to mark a griefer.");
                 return;
             }
             if(args.length == 0) {
-                player.sendMessage(Tools.getPlayerList());
+                Tools.message(player,Tools.getPlayerList());
                 return;
             }
             actionManager.reason=args.length==2 ? args[1] : "Reason not provided";
@@ -507,7 +530,7 @@ public class Main extends Plugin {
 
         handler.<Player>register("emergency","[off]","Starts emergency.For admins only.",(args, player) ->{
             if(!player.isAdmin){
-                player.sendMessage(prefix+"Only admin can start or disable emergency.");
+                Tools.errMessage(player,"Only admin can start or disable emergency.");
                 return;
             }
             ActionManager.switchEmergency(args.length==1);
@@ -522,7 +545,7 @@ public class Main extends Plugin {
                     String stats=args[0].equals("rules") ? mapManager.getMapRules(args.length==2 ? args[1]:null):
                             mapManager.getMapStats(args.length==2 ? args[1]:null);
                     if(stats==null){
-                        player.sendMessage(prefix+"Map not found.");
+                        Tools.errMessage(player,"Map not found.");
                         return;
                     }
                     Call.onInfoMessage(player.con,stats);
@@ -584,7 +607,7 @@ public class Main extends Plugin {
                     return;
                 case "price":
                     if(notEnoughArgs(player,2,args)) return;
-                    int amount = args.length == 2 || Tools.isNotInteger(args[2]) ? 1 : Integer.parseInt(args[2]);
+                    int amount = args.length == 2 || !Strings.canParsePostiveInt(args[2]) ? 1 : Integer.parseInt(args[2]);
                     Call.onInfoMessage(player.con, factory.price(player, args[1], amount));
                     return;
                 case "send":
@@ -619,7 +642,7 @@ public class Main extends Plugin {
         handler.<Player>register("vote", "<map/skipwave/restart/gameover/kickallafk/y/n> [indexOrName/waveAmount]", "Opens vote session or votes in case of votekick.",
                 (arg, player) -> {
             if(Database.getData(player).rank==Rank.AFK){
-                player.sendMessage(prefix+"You are AFK vote isn t enabled for you.");
+                Tools.errMessage(player,"You are "+Rank.AFK.getName()+", vote isn't enabled for you.");
                 return;
             }
             Package p;
@@ -661,35 +684,35 @@ public class Main extends Plugin {
 
         handler.<Player>register("suicide","Kill your self.",(arg, player) -> {
             if(!Database.hasSpecialPerm(player,Perm.suicide)){
-                //player.sendMessage("You have to be "+Rank.kamikaze.getSuffix()+" to suicide.");
+                Tools.noPerm(player);
                 return;
             }
             player.onDeath();
             player.kill();
-            Call.sendMessage(prefix+player.name+"[white] committed suicide.");
-            Timer.schedule(()->Call.sendMessage(prefix+"F..."),5);
+            Tools.message(player.name+"[white] committed suicide.");
+            Timer.schedule(()->Tools.message("F..."),5);
         });
 
         handler.<Player>register("set","[settingName/textColor] [on/off/color]","Set your message color or " +
                         "enable/disable any setting.Write just /set for setting list.",(arg, player) ->{
             if(arg.length==0) {
-                player.sendMessage(prefix+"Options:"+ Arrays.toString(Setting.values()));
+                Tools.message(player,"Options:"+ Arrays.toString(Setting.values()));
                 return;
             }
             if(notEnoughArgs(player,2,arg)) return;
 
             if(arg[0].equals("textColor")){
                 Database.getData(player).textColor=arg[1];
-                player.sendMessage(prefix+"["+arg[1]+"]if you see your color in brackets it probably isn t " +
+                Tools.message(player,"["+arg[1]+"]if you see your color in brackets it probably isn t " +
                         "valid or recognized.");
                 return;
             }
             try {
                 Setting s=Setting.valueOf(arg[0]);
                 Database.switchSetting(player,s,arg[1].equals("off"));
-                player.sendMessage(prefix+"You toggled the [orange]"+s.name()+"[] "+arg[1]+".");
+                Tools.message(player,"You toggled the [orange]"+s.name()+"[] "+arg[1]+".");
             } catch (IllegalArgumentException ex){
-                player.sendMessage(prefix+"Non existent setting. Use /set to see options.");
+                Tools.errMessage(player,"Non existent setting. Use /set to see options.");
             }
                 });
 
@@ -704,7 +727,7 @@ public class Main extends Plugin {
                 player.sendMessage(res.get(i));
             }
             if(res.isEmpty()){
-                player.sendMessage(prefix+"No results found.");
+                Tools.errMessage(player,"No results found.");
             }
         });
 
@@ -727,7 +750,7 @@ public class Main extends Plugin {
                 }
                 PlayerData pd=Database.findData(arg[0]);
                 if(pd==null){
-                    player.sendMessage(prefix+"Player not found.");
+                    Tools.errMessage(player,"Player not found.");
                     return;
                 }
                 Call.onInfoMessage(player.con,pd.toString());
@@ -739,19 +762,19 @@ public class Main extends Plugin {
         handler.<Player>register("votekick", "[player]", "Vote to kick a player.", (args, player) -> {
 
             if(!Administration.Config.enableVotekick.bool()) {
-                player.sendMessage("[scarlet]Vote-kick is disabled on this server.");
+                Tools.errMessage(player,"Vote-kick is disabled on this server.");
                 return;
             }
             if(voteKick.voting){
-                player.sendMessage(prefix+"Votekick in process.");
+                Tools.errMessage(player,"Votekick in process.");
                 return;
             }
             if(playerGroup.size() < 3) {
-                player.sendMessage(prefix+"At least 3 players are needed to start a votekick.");
+                Tools.errMessage(player,"At least 3 players are needed to start a votekick.");
                 return;
             }
             if(player.isLocal){
-                player.sendMessage(prefix+"Just kick them yourself if you're the host.");
+                Tools.errMessage(player,"Just kick them yourself if you're the host.");
                 return;
 
             }
@@ -769,34 +792,29 @@ public class Main extends Plugin {
 
         handler.<Player>register("set-rank","<playerName/uuid/ID> <rank/restart> [reason...]","Command for admins.",(args,player)->{
             if(!player.isAdmin){
-                player.sendMessage("You are not an admin.");
+                Tools.errMessage(player,"You are not an admin.");
                 return;
             }
             switch (Database.setRankViaCommand(player,args[0],args[1],args.length==3 ? args[2] : null)){
                 case notFound:
-                    player.sendMessage(prefix+"Player not found");
+                    Tools.errMessage(player,"Player not found");
                     break;
                 case invalidRank:
-                    player.sendMessage(prefix+"Rank not found.\nRanks:" + Arrays.toString(Rank.values())+"\n" +
+                    Tools.errMessage(player,"Rank not found.\nRanks:" + Arrays.toString(Rank.values())+"\n" +
                             "Custom ranks:"+Database.ranks.keySet());
                     break;
                 case notPermitted:
-                    player.sendMessage(prefix+"Changing or assigning admin rank can be done only thorough terminal.");
+                    Tools.errMessage(player,"Changing or assigning admin rank can be done only thorough terminal.");
             }
         });
-
-        handler.<Player>register("dm","<player> <text...>", "Send direct message to player.", (arg,player) -> {
-            StringBuilder b=new StringBuilder();
-            for(String s:arg){
-                b.append(s).append(" ");
-            }
-            Player other=Tools.findPlayer(arg[0]);
+        handler.<Player>register("dm","[id/name/text...]", "Send direct message to player.", (args,player) -> {
+            Player other=Tools.findPlayer(args[0]);
             if(other==null){
-                player.sendMessage(prefix+"Player not found.");
+                Tools.errMessage(player,"Player not found.");
                 return;
             }
-            player.sendMessage("[#ffdfba][DM to "+other.name+"][white]:"+b.toString().replace(arg[0],""));
-            other.sendMessage("[#ffdfba][DM from "+player.name+"][white]:"+b.toString().replace(arg[0],""));
+            player.sendMessage("[#ffdfba][DM to "+other.name+"][white]:"+args[0]);
+            other.sendMessage("[#ffdfba][DM from "+player.name+"][white]:"+args[0]);
         });
     }
 }

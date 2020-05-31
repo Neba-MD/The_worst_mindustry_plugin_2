@@ -2,25 +2,27 @@ package theWorst;
 
 import arc.struct.Array;
 import arc.util.Log;
+import arc.util.Strings;
 import arc.util.Tmp;
+import mindustry.content.Blocks;
 import mindustry.entities.type.Player;
+import mindustry.game.EventType;
 import mindustry.game.Team;
-import mindustry.io.MapIO;
+import mindustry.gen.Call;
+import mindustry.world.Block;
 import mindustry.world.Tile;
+import mindustry.world.blocks.Floor;
 import org.javacord.api.entity.channel.TextChannel;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
-import theWorst.dataBase.Database;
-import theWorst.dataBase.Perm;
-import theWorst.dataBase.Rank;
-import theWorst.dataBase.Stat;
+import theWorst.dataBase.*;
+import theWorst.discord.ColorMap;
 import theWorst.interfaces.runLoad;
 import theWorst.interfaces.runSave;
 
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -30,6 +32,22 @@ import java.util.Set;
 import static mindustry.Vars.*;
 
 public class Tools {
+    public static final String prefix = "[coral][[[scarlet]Server[]]:[]";
+
+    private static final ColorMap colorMap=new ColorMap();
+
+    public static void errMessage(Player player,String content){
+        player.sendMessage(prefix+"[scarlet]"+content);
+    }
+    public static void message(Player player,String content){
+        player.sendMessage(prefix+content);
+    }
+    public static void message(String content){
+        Call.sendMessage(prefix+content);
+    }
+    public static void noPerm(Player player){
+        errMessage(player,"You have no permission to do this. Please submit your appeal in discord");
+    }
     public static String toString(Array<String> struct){
         StringBuilder b=new StringBuilder();
         for(String s :struct){
@@ -47,23 +65,33 @@ public class Tools {
         return null;
     }
 
-    public static String cleanName(String name){
-        name=cleanColors(name);
-        while (name.contains("<")){
-            int first=name.indexOf("<"),last=name.indexOf(">");
-            name=name.substring(0,first)+name.substring(last+1);
+    public static String clean(String string,String  begin, String  end){
+        int fromBegin=0,fromEnd=0;
+        while (string.contains(begin)){
+            int first=string.indexOf(begin,fromBegin),last=string.indexOf(end,fromEnd);
+            if(first==-1 || last==-1) break;
+            if(first>last){
+                fromBegin=first+1;
+                fromEnd=last+1;
+            }
+            string=string.substring(0,first)+string.substring(last+1);
         }
-        name=name.replace(" ","_");
-        return name;
+        return string;
+    }
+
+    public static String cleanEmotes(String string){
+        return clean(string,"<",">");
     }
 
     public static String cleanColors(String string){
-        while (string.contains("[")){
-            int first=string.indexOf("["),last=string.indexOf("]");
-            if(first==-1 || last==-1 || last<first) break;
-            else string=string.substring(0,first)+string.substring(last+1);
-        }
-        return string;
+        return clean(string,"[","]");
+    }
+
+    public static String cleanName(String name){
+        name=cleanColors(name);
+        name=cleanEmotes(name);
+        name=name.replace(" ","_");
+        return name;
     }
 
     public static String getPlayerList(){
@@ -71,34 +99,24 @@ public class Tools {
         builder.append("[orange]Players: \n");
         for(Player p : playerGroup.all()){
             if(p.isAdmin || p.con == null || p == player || Database.hasPerm(p, Perm.higher)) continue;
-
-            builder.append("[lightgray] ").append(p.name).append("[accent] (#").append(p.id).append(")\n");
+            builder.append("[lightgray]").append(p.name).append("[accent] (ID:");
+            builder.append(Database.getData(p).serverId).append(")\n");
         }
         return builder.toString();
     }
 
-    public static Player findPlayer(String name) {
+    public static Player findPlayer(String arg) {
+        if(Strings.canParseInt(arg.substring(1))){
+            int id = Strings.parseInt(arg.substring(1));
+            return  playerGroup.find(p -> Database.getData(p).serverId == id);
+        }
         for(Player p:playerGroup){
             String pName=Tools.cleanName(p.name);
-            if(pName.equalsIgnoreCase(name)){
+            if(pName.equalsIgnoreCase(arg)){
                 return p;
             }
         }
         return null;
-    }
-
-
-
-    public static boolean isNotInteger(String str) {
-        if (str == null || str.trim().isEmpty()) {
-            return true;
-        }
-        for (int i = 0; i < str.length(); i++) {
-            if (!Character.isDigit(str.charAt(i))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public static String report(String object, int amount) {
@@ -153,10 +171,32 @@ public class Tools {
         for(int x = 0; x < img.getWidth(); x++){
             for(int y = 0; y < img.getHeight(); y++){
                 Tile tile = world.tile(x,y);
-                img.setRGB(x, img.getHeight() - 1 - y, Tmp.c1.set(MapIO.colorFor(tile.floor(), tile.block(), tile.overlay(), tile.getTeam())).argb8888());
+                int color = colorFor(tile.floor(), tile.block(), tile.overlay(), tile.getTeam());
+                img.setRGB(x, img.getHeight() - 1 - y, Tmp.c1.set(color).argb8888());
             }
         }
         return img;
+    }
+
+    public static int colorFor(Floor floor, Block wall, Block ore, Team team){
+        if(wall.synthetic()){
+            return team.color.rgba();
+        }
+        return wall.solid ? colorMap.get(wall.name) : ore == Blocks.air ? colorMap.get(floor.name) : ore.color.rgba();
+    }
+
+    public static void sendChatMessage(Player sender,String message) {
+        for(Player p:playerGroup){
+            if(!Database.hasEnabled(p, Setting.chat) || Database.hasMuted(p,sender)) return;
+            p.sendMessage("[coral][[[scarlet]"+sender.name+"[]]:[]"+message);
+        }
+    }
+
+    public static void sendChatMessage(String name,String message) {
+        for(Player p:playerGroup){
+            if(!Database.hasEnabled(p, Setting.chat)) return;
+            p.sendMessage("[coral][[[scarlet]"+name+"[]]:[]"+message);
+        }
     }
 
     public static class JsonMap {
@@ -199,7 +239,7 @@ public class Tools {
                     String msg="Available ranks: " + Arrays.toString(Rank.values()) +
                             "\nAvailable special ranks:" + Database.ranks.toString();
                     if (player!=null){
-                        player.sendMessage(Main.prefix + msg);
+                        Tools.message( player, msg);
                     }else {
                         channel.sendMessage(msg);
                     }
@@ -207,7 +247,7 @@ public class Tools {
                 case "sort":
                     msg = "Available sort types: " + Arrays.toString(Stat.values());
                     if (player!=null){
-                        player.sendMessage(Main.prefix + msg);
+                        Tools.message( player, msg);
                     }else {
                         channel.sendMessage(msg);
                     }
@@ -230,7 +270,7 @@ public class Tools {
             if (res == null) {
                 String msg ="Invalid sort type, for list of available see /search sort";
                 if (player!=null){
-                    player.sendMessage(Main.prefix + msg);
+                    Tools.errMessage( player, msg);
                 }else {
                     channel.sendMessage(msg);
                 }

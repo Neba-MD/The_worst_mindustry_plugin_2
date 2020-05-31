@@ -101,7 +101,7 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
 
     @Override
     public void fail(String object, int amount) {
-        Call.sendMessage(Main.prefix+"Ship with " + Tools.report(object, amount)
+        Tools.message("Ship with " + Tools.report(object, amount)
                 + " is going back to loadout");
         storage[getItemIdx(getItemByName(object))] += amount;
 
@@ -124,7 +124,7 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
                 @Override
                 public void run() {
                     core.items.add(targetItem, finalAmount);
-                    Call.sendMessage(Main.prefix + "[green]" + Tools.report(p.object, p.amount) + " arrived to core.");
+                    Hud.addAd(Tools.report(p.object, p.amount) + " arrived to core.",10,new String[]{"green","gray"});
                 }
             };
             requests.add(new Request(Main.transportTime, task, this, p, true));
@@ -146,35 +146,35 @@ public class Loadout extends Requester implements Interruptible, LoadSave, Votab
                 storage[idx] += amount;
 
             }
-            Call.sendMessage(Main.prefix + "[green][orange]" + (p.object.equals("all") ? p.amount + " of all" : amount + " " + p.object) + "[] arrived to loadout.");
+            Hud.addAd("[orange]" + (p.object.equals("all") ? p.amount + " of all" : amount + " " + p.object) + "[] arrived to loadout.",10,new String[]{"green","gray"});
         }
     }
 
     @Override
     public Package verify(Player player, String object, int amount, boolean toBase) {
         if (requests.size == config.get(THREAD_COUNT) && toBase) {
-            player.sendMessage(Main.prefix + " All the ships are occupied at the moment.");
+            Tools.errMessage( player, " All the ships are occupied at the moment.");
             return null;
         }
         Item targetItem = getItemByName(object);
         if (targetItem == null && !(object.equals("all") && !toBase)) {
-            player.sendMessage(Main.prefix + "The [scarlet] " + object + "[] doesn't exist.");
+            Tools.errMessage( player, "The [orange] " + object + "[] doesn't exist.Pick from "+Main.items.toString());
             return null;
         }
         CoreBlock.CoreEntity core = getCore(player);
         if(core==null){
-            player.sendMessage(Main.prefix + "Loadout cannot find any core.");
+            Tools.errMessage( player, "All cores destroyed.");
             return null;
         }
         if (getTransportAmount(targetItem, amount, core, toBase) == 0) {
-            player.sendMessage(Main.prefix + "Nothing to transport.");
+            Tools.errMessage( player, "Nothing to transport.");
             return null;
         }
         return new Package(object, amount, toBase, player);
     }
 
-    public static CoreBlock.CoreEntity getCore(Player p) {
-        Teams.TeamData teamData = state.teams.get(p.getTeam());
+    public static CoreBlock.CoreEntity getCore(Player player) {
+        Teams.TeamData teamData = state.teams.get(player.getTeam());
         if(teamData.cores.isEmpty()) return null;
         return teamData.cores.first();
     }

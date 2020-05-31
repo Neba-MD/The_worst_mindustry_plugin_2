@@ -22,31 +22,22 @@ public class VoteKick{
     boolean voting=false;
 
     public void aVoteKick(String arg,Player player){
-        Player found;
-        if(arg.length() > 1 && arg.startsWith("#") && Strings.canParseInt(arg.substring(1))){
-            int id = Strings.parseInt(arg.substring(1));
-            found = playerGroup.find(p -> p.id == id);
-        }else{
-            found = playerGroup.find(p -> p.name.equalsIgnoreCase(arg));
-        }
-        if(found == null){
-            found=Tools.findPlayer(arg);
-            if(found == null) {
-                player.sendMessage(Main.prefix+"No player[orange]'" + arg + "'[] found.");
-                return;
-            }
-        }
+        Player found = Tools.findPlayer(arg);
 
+        if(found == null) {
+            Tools.errMessage(player,"No player named [orange]" + arg + "[] found.");
+            return;
+        }
         if(found.isAdmin){
-            player.sendMessage(Main.prefix+"Did you really expect to be able to mark an admin?");
+            Tools.errMessage(player,"Did you really expect to be able to mark an admin?");
             return;
         }
         if(found==player){
-            player.sendMessage(Main.prefix+"You cannot kick your self.");
+            Tools.errMessage(player,"You cannot kick your self.");
             return;
         }
         if(Database.isGriefer(player)){
-            player.sendMessage("You don t have a permission to do this.");
+            Tools.errMessage(player,"You don t have a permission to do this.");
             return;
         }
         voting=true;
@@ -55,7 +46,7 @@ public class VoteKick{
         vote(player, 1);
         this.task = Timer.schedule(() -> {
             if(checkPass()){
-                Call.sendMessage(Strings.format(Main.prefix+"Vote failed. Not enough votes to kick[green] {0}[].", target.name));
+                Tools.message(Strings.format("Vote failed. Not enough votes to kick[green] {0}[].", target.name));
                 restart();
             }
         }, 60);
@@ -63,21 +54,21 @@ public class VoteKick{
 
     void vote(Player player, int d){
         if (voted.contains(player.con.address)) {
-            player.sendMessage(Main.prefix + "You already voted,sit down.");
+            Tools.errMessage(player,"You already voted,sit down.");
             return;
         }
         if(player==target){
-            player.sendMessage(Main.prefix+"You cannot vote on your own trial.");
+            Tools.errMessage(player,"You cannot vote on your own trial.");
             return;
         }
         if(!voting){
-            player.sendMessage(Main.prefix+"No votekick to vote for, you may try to write just \"y\" or \"n\" to chat.");
+            Tools.errMessage(player,"No votekick to vote for, you may try to write just \"y\" or \"n\" to chat.");
             return;
         }
         votes += d;
         voted.add(player.con.address);
         if(checkPass()){
-            Call.sendMessage(Strings.format(Main.prefix+"[orange]{0}[] has voted on kicking[scarlet] {1}[]. ({2}/{3})\nType [orange]/vote <y/n>[] to agree.",
+            Tools.message(Strings.format("[orange]{0}[] has voted on kicking[scarlet] {1}[]. ({2}/{3})\nType [orange]/vote <y/n>[] to agree.",
                     player.name, target.name, votes, Vote.getRequired()));
         }
 
@@ -85,7 +76,7 @@ public class VoteKick{
 
     boolean checkPass(){
         if(votes >= Vote.getRequired()){
-            Call.sendMessage(Strings.format(Main.prefix+"Vote passed.[scarlet] {0}[] will be banned from the server for {1} minutes.", target.name, (kickDuration/60)));
+            Tools.message(Strings.format("Vote passed.[scarlet] {0}[] will be banned from the server for {1} minutes.", target.name, (kickDuration/60)));
             target.getInfo().lastKicked = Time.millis() + kickDuration*1000;
             playerGroup.all().each(p -> p.uuid != null && p.uuid.equals(target.uuid), p -> p.con.kick(Packets.KickReason.vote));
             Database.setRank(target, Rank.griefer);

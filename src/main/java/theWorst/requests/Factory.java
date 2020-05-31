@@ -13,6 +13,7 @@ import mindustry.gen.Call;
 import mindustry.type.Item;
 import mindustry.type.UnitType;
 import org.json.simple.JSONObject;
+import theWorst.Hud;
 import theWorst.Main;
 import theWorst.Package;
 import theWorst.Tools;
@@ -24,6 +25,8 @@ import theWorst.interfaces.Votable;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 
 import static java.lang.Math.pow;
 import static java.lang.Math.sqrt;
@@ -49,7 +52,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
 
     final String configFile = Main.directory+"factoryConfig.json";
 
-    ArrayMap<String, int[]> stats = new ArrayMap<>();
+    HashMap<String, int[]> stats = new HashMap<>();
     Array<String> statKeys = new Array<>();
     Loadout loadout;
 
@@ -83,9 +86,9 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                 e.tile.removeNet();
                 if (e.builder instanceof BuilderDrone) {
                     ((BuilderDrone) e.builder).kill();
-                    Call.sendMessage(Main.prefix + "Builder Drone wos destroyed after it attempt to build on drop point");
+                    Tools.message("Builder Drone wos destroyed after it attempt to build on drop point");
                 } else if (e.builder instanceof Player) {
-                    ((Player) e.builder).sendMessage(Main.prefix + "You cannot build on unit drop point.");
+                    Tools.errMessage(((Player) e.builder), "You cannot build on unit drop point.");
                 }
             }
 
@@ -116,11 +119,11 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
     @Override
     public void fail(String object, int amount) {
         if (object.equals("all")) {
-            Call.sendMessage(Main.prefix + "Ship with all units don t have enough fuel to go back.All units are lost.");
+            Tools.message("Ship with all units don t have enough fuel to go back.All units are lost.");
             return;
         }
         stats.get(object)[UNIT_COUNT] += amount;
-        Call.sendMessage(Main.prefix + Tools.report(object, amount) + " are going back to base.");
+        Tools.message(Tools.report(object, amount) + " are going back to base.");
     }
 
     @Override
@@ -131,7 +134,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
             int used=0,all;
             ArrayList<BaseUnit> units = new ArrayList<>();
             if (p.object.equals("all")) {
-                for (String name : stats.keys()) {
+                for (String name : stats.keySet()) {
                     used+=addUnits(getUnitByName(name), units, p.target, -1, p.x, p.y);
                 }
                 all=getUnitCount("all");
@@ -146,7 +149,8 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                     for (BaseUnit u : units) {
                         u.add();
                     }
-                    Call.sendMessage(Main.prefix + "[green]" + Tools.report(p.object, p.amount) + " units arrived.");
+                    Hud.addAd(Tools.report(p.object, p.amount) + " successfully landed on coordinates [orange]"+
+                            p.x+","+p.y+".",10,new String[]{"green","gray"});
                 }
             }, this, p, true);
             requests.add(req);
@@ -166,7 +170,8 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                 @Override
                 public void run() {
                     stats.get(p.object)[UNIT_COUNT] += p.amount;
-                    Call.sendMessage(Main.prefix + "[green]" + Tools.report(p.object, p.amount) + " wos finished and are waiting in a hangar.");
+                    Hud.addAd( "Factory just finished "+Tools.report(p.object, p.amount)+".",
+                            10,new String[]{"green","gray"});
                 }
             }, this, p, false);
             requests.add(req);
@@ -181,11 +186,11 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
     @Override
     public theWorst.Package verify(Player player, String object, int amount, boolean toBase) {
         if (!canTransport()) {
-            player.sendMessage(Main.prefix + "Factory is doing maximum amount of tasks actually.");
+            Tools.errMessage( player, "Factory is doing maximum amount of tasks actually.");
             return null;
         }
         if (!stats.containsKey(object) && !(object.equals("all") && toBase)) {
-            player.sendMessage(Main.prefix + "Factory cannot build nor send [scarlet] " + object + "[].");
+            Tools.errMessage( player, "Factory cannot build nor send [orange] " + object + "[], only "+ stats.keySet().toString() +".");
             return null;
         }
         boolean hasEnough = true;
@@ -196,7 +201,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                 int missing = cost[i] * amount - loadout.storage[i];
                 if (missing > 0) {
                     hasEnough = false;
-                    player.sendMessage(Main.prefix + "You are missing [scarlet]" + missing + "[]"
+                    Tools.errMessage( player, "You are missing [orange]" + missing + "[]"
                             + Main.itemIcons[i] + ".");
                 }
             }
@@ -210,17 +215,17 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
                 amount = uCount;
             }
             if (uCount == 0) {
-                player.sendMessage(Main.prefix + "Nothing to launch.");
+                Tools.errMessage( player, "Nothing to launch.");
                 return null;
             }
             if (uCount < amount) {
-                player.sendMessage(Main.prefix + "There are only" + Tools.report(object, uCount) + ".");
+                Tools.errMessage( player, "There are only" + Tools.report(object, uCount) + ".");
                 return null;
             }
             int x = (int) player.x;
             int y = (int) player.y;
             if (world.tile(x / 8, y / 8).solid()) {
-                player.sendMessage(Main.prefix + "Land unit cant be dropped on a solid block.");
+                Tools.errMessage( player, "Land unit cant be dropped on a solid block.");
                 return null;
             }
             p= new theWorst.Package(object, amount, true, player, x, y);
@@ -235,7 +240,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
     public int getUnitCount(String key) {
         if (key.equals("all")) {
             int res = 0;
-            for (String k : stats.keys()) {
+            for (String k : stats.keySet()) {
                 res += getUnitCount(k);
             }
             return res;
@@ -269,7 +274,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
     public String info() {
         StringBuilder message = new StringBuilder();
         message.append("[orange]--FACTORY INFO--[]\n\nunit/in hangar\n");
-        for (String name : stats.keys()) {
+        for (String name : stats.keySet()) {
             message.append(name).append("/").append(getUnitCount(name)).append("\n");
         }
         return message.toString();
@@ -277,8 +282,8 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
 
     public String price(Player player, String unitName, int amount) {
         if (!stats.containsKey(unitName)) {
-            player.sendMessage(Main.prefix + "There is no [scarlet]" + unitName + "[] only " +
-                    Tools.toString(stats.keys().toArray()) + ".");
+            Tools.errMessage( player, "There is no [orange]" + unitName + "[] only " +
+                    stats.keySet().toString() + ".");
             return null;
         }
         StringBuilder message = new StringBuilder();
@@ -302,7 +307,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
     @Override
     public JSONObject save() {
         JSONObject data = new JSONObject();
-        for (String name : stats.keys()) {
+        for (String name : stats.keySet()) {
             data.put(name, getUnitCount(name));
         }
         return data;
@@ -310,7 +315,7 @@ public class Factory extends Requester implements Interruptible, LoadSave, Votab
 
     @Override
     public void load(JSONObject data) {
-        for (String name : stats.keys()) {
+        for (String name : stats.keySet()) {
             if (!stats.containsKey(name)) {
                 continue;
             }

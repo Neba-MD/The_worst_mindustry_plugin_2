@@ -23,6 +23,8 @@ public class ActionManager implements Votable, Interruptible {
     static Emergency emergency= new Emergency();
     String reason;
 
+
+
     public ActionManager(){
         Events.on(mindustry.game.EventType.PlayEvent.class, e->{
             data=new TileInfo[world.height()][world.width()];
@@ -42,7 +44,7 @@ public class ActionManager implements Votable, Interruptible {
             }else {
                 for(String s:ti.data.keySet()){
                     PlayerData pd=ti.data.get(s);
-                    msg.append(String.format("[orange]%s : [gray]name[] - %s [gray]id[] - %d[]\n",s,pd.originalName,pd.serverId));
+                    msg.append(String.format("[orange]%s : [gray]name[] - %s [gray]id[white] - %d[]\n",s,pd.originalName,pd.serverId));
                 }
             }
             Call.onLabel(e.player.con,msg.toString(),5,e.tile.x*8,e.tile.y*8);
@@ -60,9 +62,15 @@ public class ActionManager implements Votable, Interruptible {
             }
         });
 
-        Events.on(EventType.BlockDestroyEvent.class, e-> {
-            data[e.tile.y][e.tile.x].lock=0;
+        Events.on(EventType.BlockDestroyEvent.class, e-> data[e.tile.y][e.tile.x].lock=0);
 
+        Events.on(EventType.PlayerChatEvent.class,e->{
+            if(!e.message.startsWith("/")) return;
+            if(CommandUser.map.containsKey(e.player.uuid)){
+                CommandUser.map.get(e.player.uuid).addOne(e.player);
+                return;
+            }
+            CommandUser.map.put(e.player.uuid,new CommandUser(e.player));
         });
 
         Events.on(EventType.ServerLoadEvent.class,e-> netServer.admins.addActionFilter(action -> {
@@ -76,14 +84,14 @@ public class ActionManager implements Votable, Interruptible {
             if(action.type==Administration.ActionType.tapTile) return true;
             TileInfo ti=data[action.tile.y][action.tile.x];
             if(isEmergency() && pd.trueRank.permission.getValue()<Perm.high.getValue()) {
-                player.sendMessage("You don t have permission to do anything during emergency.");
+                Tools.errMessage(player,"You don t have permission to do anything during emergency.");
                 return false;
             }
             if(!(pd.trueRank.permission.getValue()>=ti.lock)){
                 if(pd.trueRank==Rank.griefer){
-                    player.sendMessage(Main.noPerm);
+                    Tools.noPerm(player);
                 }else {
-                    player.sendMessage(Main.prefix+"You have to be at least "+Rank.verified.getName()+" to interact with this tile.");
+                    Tools.errMessage(player,"You have to be at least "+Rank.verified.getName()+" to interact with this tile.");
                 }
                 return false;
 
@@ -104,12 +112,12 @@ public class ActionManager implements Votable, Interruptible {
         PlayerData pd=((PlayerData)p.obj);
         Rank prevRank = pd.trueRank;
         if(p.object.equals("remove")){
-            Call.sendMessage(Main.prefix+"[orange]"+pd.originalName+"[] lost "+ Rank.griefer.getName()+" rank.");
+            Tools.message("[orange]"+pd.originalName+"[] lost "+ Rank.griefer.getName()+" rank.");
             pd.trueRank=Rank.newcomer;
             Database.bunUnBunSubNet(pd,false);
             Log.info(pd.originalName+" is no longer griefer.");
         }else {
-            Call.sendMessage(Main.prefix+"[orange]"+pd.originalName+"[] obtained "+Rank.griefer.getName()+" rank.");
+            Tools.message("[orange]"+pd.originalName+"[] obtained "+Rank.griefer.getName()+" rank.");
             pd.trueRank=Rank.griefer;
             Database.bunUnBunSubNet(pd,true);
             Log.info(pd.originalName+" wos marked as griefer.");
@@ -143,7 +151,7 @@ public class ActionManager implements Votable, Interruptible {
                 pd=Database.findData(object);
                 if(pd!=null){
                     if(pd.trueRank.isAdmin){
-                        player.sendMessage(Main.prefix+" You cannot mark " + pd.trueRank.getName() + ".");
+                        Tools.errMessage(player," You cannot mark " + pd.trueRank.getName() + ".");
                         return null;
                     }
                 }
@@ -151,17 +159,17 @@ public class ActionManager implements Votable, Interruptible {
         }
         if(target!=null){
             if(target.isAdmin){
-                player.sendMessage(Main.prefix+"Did you really expect to be able to mark an admin?");
+                Tools.errMessage(player,"Did you really expect to be able to mark an admin?");
                 return null;
             }
             if(target==player){
-                player.sendMessage(Main.prefix+"You cannot mark your self.");
+                Tools.errMessage(player,"You cannot mark your self.");
                 return null;
             }
             pd=Database.getData(target);
         }
         if(pd==null){
-            player.sendMessage(Main.prefix+"Player not found.");
+            Tools.errMessage(player,"Player not found.");
             return null;
         }
         Package p=new Package(pd.trueRank==Rank.griefer ? "remove":"add",pd,player);
@@ -184,7 +192,7 @@ public class ActionManager implements Votable, Interruptible {
             if(active()){
                 restart();
             }else {
-                Call.sendMessage(Main.prefix+"[scarlet]Emergency started you cannot build or break nor configure anything." +
+                Tools.message("[scarlet]Emergency started you cannot build or break nor configure anything." +
                         "Be patient admins are currently dealing with griefer attack.[]");
             }
             time= 180;
@@ -212,7 +220,7 @@ public class ActionManager implements Votable, Interruptible {
             if(thread==null){
                 return;
             }
-            Call.sendMessage(Main.prefix+"[green]Emergency ended.");
+            Tools.message("[green]Emergency ended.");
             thread.cancel();
             thread=null;
         }
@@ -240,5 +248,43 @@ public class ActionManager implements Votable, Interruptible {
     @Override
     public void interrupt() {
         emergency.restart();
+    }
+
+    static class CommandUser{
+        static HashMap<String,CommandUser> map = new HashMap<>();
+        int commandUseLimit=5;
+        String uuid;
+        int used=1;
+        Timer.Task thread;
+
+
+        private void addOne(Player player){
+            used+=1;
+            if(used>=commandUseLimit){
+                netServer.admins.addSubnetBan(player.con.address.substring(0,player.con.address.lastIndexOf(".")));
+                player.con.kick("You wer banned for command spamming. You can appeal on our discord.");
+                terminate();
+                return;
+            }
+            if (used>=2){
+                Tools.errMessage(player,commandUseLimit-used+" more quick uses of command and you will be banned for spam.");
+            }
+        }
+
+        private void terminate(){
+            map.remove(uuid);
+            thread.cancel();
+        }
+
+        private CommandUser(Player player) {
+            uuid = player.uuid;
+            map.put(uuid, this);
+            thread=Timer.schedule(()->{
+                used--;
+                if (used == 0) {
+                    terminate();
+                }
+            }, 2, 2);
+        }
     }
 }

@@ -8,6 +8,7 @@ import theWorst.dataBase.Database;
 import theWorst.dataBase.Perm;
 import theWorst.dataBase.PlayerData;
 import theWorst.dataBase.Rank;
+import theWorst.helpers.MapManager;
 import theWorst.interfaces.Interruptible;
 import theWorst.interfaces.Votable;
 import theWorst.requests.Factory;
@@ -21,7 +22,7 @@ import static mindustry.Vars.player;
 import static mindustry.Vars.playerGroup;
 
 public class Vote implements Interruptible {
-    Votable votable;
+    static Votable votable;
     Package aPackage;
 
     String message;
@@ -50,25 +51,25 @@ public class Vote implements Interruptible {
             return;
         }
         if (voting) {
-            requester.sendMessage(Main.prefix + "Vote in process.");
+            Tools.errMessage(requester, "Vote in process.");
             return;
         }
         if (Database.isGriefer(requester)){
-            requester.sendMessage(Main.noPerm);
+            Tools.noPerm(player);
             return;
         }
         if(isRecent(requester)){
             int time=recent.get(requester.con.address);
-            requester.sendMessage(Main.prefix+"Your last vote failed,to prevent spam you have to wait "
+            Tools.errMessage(requester,"Your last vote failed,to prevent spam you have to wait "
                     +time / 60 + "min" + time % 60 + "sec.");
             return;
         }
-        this.votable = votable;
+        Vote.votable = votable;
         this.aPackage = aPackage;
         this.message = message;
         restart();
         addVote(requester,"y");
-        Call.sendMessage(Main.prefix +"[orange]"+  requester.name +
+        Tools.message(requester,"[orange]"+  requester.name +
                 "[white] started vote for " + message + ". Send a message with \"y\" to agree or \"n\" to disagree.");
     }
 
@@ -118,23 +119,25 @@ public class Vote implements Interruptible {
         if (count == 2) {
             return 2;
         }
-        return Mathf.clamp((int) Math.ceil(count / 2.0),1,5);
+        int res = (int) Math.ceil(count / 2.0);
+        if(!(votable instanceof MapManager)) res =Mathf.clamp(res,1,5);
+        return  res;
     }
 
     public void addVote(Player player, String vote) {
         PlayerData pd=Database.getData(player);
         if (voted.contains(player.con.address)) {
-            player.sendMessage(Main.prefix + "You already voted,sit down!");
+            Tools.errMessage( player, "You already voted,sit down!");
             return;
         }
 
         if (pd.trueRank == Rank.griefer){
-            player.sendMessage(Main.noPerm);
+            Tools.noPerm(player);
             return;
         }
 
         if(pd.rank == Rank.AFK){
-            player.sendMessage(Main.prefix + "You are AFK you cannot vote.");
+            Tools.errMessage( player, "You are "+Rank.AFK.getName()+", you cannot vote.");
             return;
         }
 

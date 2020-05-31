@@ -3,6 +3,7 @@ package theWorst.dataBase;
 import arc.Events;
 import arc.struct.Array;
 import arc.util.Log;
+import arc.util.Strings;
 import arc.util.Time;
 import arc.util.Timer;
 import mindustry.content.Items;
@@ -37,12 +38,7 @@ public class Database implements Votable, LoadSave {
     public static Timer.Task afkThread;
     static SpecialRank error =new SpecialRank();
 
-
-
     public Database(){
-
-
-
         Events.on(EventType.GameOverEvent.class, e ->{
             for(Player p:playerGroup){
                 PlayerData pd=getData(p);
@@ -127,6 +123,13 @@ public class Database implements Votable, LoadSave {
             PlayerData pd;
             Player player=e.player;
             String uuid=player.uuid;
+            String orig=player.name;
+            player.name=Tools.cleanEmotes(player.name);
+            if(player.name.isEmpty()) player.name="noname";
+            if(!orig.equals(player.name)){
+                Tools.errMessage(player,"Your name hes some illegal parts that wos aromatically removed. " +
+                        "Try to not use \"<\" or \">\" ");
+            }
             if(!data.containsKey(uuid)) {
                 data.put(uuid,new PlayerData(player));
                 Hud.addAd("We have a newcomer [orange]"+player.name+"[white].",30);
@@ -169,10 +172,10 @@ public class Database implements Votable, LoadSave {
                 if(pd==null) return;
                 if(Rank.AFK.condition(pd)){
                     if(pd.rank==Rank.AFK) return;
-                    Call.sendMessage(Main.prefix+"[orange]"+p.name+"[] became "+Rank.AFK.getName()+".");
+                    Tools.message("[orange]"+p.name+"[] became "+Rank.AFK.getName()+".");
                     setRank(p,Rank.AFK);
                 }else if(pd.rank==Rank.AFK){
-                    Call.sendMessage(Main.prefix+"[orange]"+p.name+"[] is not "+pd.rank.getName()+" anymore.");
+                    Tools.message("[orange]"+p.name+"[] is not "+pd.rank.getName()+" anymore.");
                     pd.rank=pd.trueRank;
                     updateName(p,pd);
                     p.isAdmin=pd.trueRank.isAdmin;
@@ -231,6 +234,10 @@ public class Database implements Votable, LoadSave {
         }
     }
 
+    public static boolean hasMuted(Player player, Player sender) {
+        return getData(player).settings.contains(sender.uuid);
+    }
+
     public void saveData() {
         try {
             FileOutputStream fileOut = new FileOutputStream(saveFile);
@@ -263,12 +270,16 @@ public class Database implements Votable, LoadSave {
     }
 
     public static void switchSetting(Player player,Setting setting,boolean off){
+        switchSetting(player,setting.name(),off);
+    }
+
+    public static void switchSetting(Player player,String setting,boolean off){
         HashSet<String > settings=getData(player).settings;
-        boolean contain=settings.contains(setting.name());
+        boolean contain=settings.contains(setting);
         if(off && contain){
-            settings.remove(setting.name());
+            settings.remove(setting);
         } else if(!contain){
-            settings.add(setting.name());
+            settings.add(setting);
         }
     }
 
@@ -297,11 +308,11 @@ public class Database implements Votable, LoadSave {
     }
 
     public static PlayerData findData(String arg){
-        if(!Tools.isNotInteger(arg)){
+        if(Strings.canParsePostiveInt(arg)){
             return getData(Integer.parseInt(arg));
         }
-        Player p= Tools.findPlayer(arg);
-        if(p!=null) return getData(p);
+        Player player= Tools.findPlayer(arg);
+        if(player!=null) return getData(player);
         return getData(arg);
     }
 
@@ -434,11 +445,11 @@ public class Database implements Votable, LoadSave {
                 DiscordBot.onRankChange(pd.originalName,pd.serverId,prevRank.name(),r.name(),by,reason);
             }
             Log.info("Rank of player " + pd.originalName + " is now " + pd.rank.name() + ".");
-            Call.sendMessage("Rank of player [orange]"+ pd.originalName+"[] is now " +pd.rank.getName() +".");
+            Tools.message("Rank of player [orange]"+ pd.originalName+"[] is now " +pd.rank.getName() +".");
         } catch (IllegalArgumentException e) {
             if(rank.equals("restart")) {
                 pd.specialRank = null;
-                Call.sendMessage(Main.prefix+"Rank of player [orange]" + pd.originalName + "[] wos restarted.");
+                Tools.message("Rank of player [orange]" + pd.originalName + "[] wos restarted.");
                 Log.info("Rank of player " + pd.originalName + " wos restarted.");
             }else if(!Database.ranks.containsKey(rank)){
 
@@ -448,7 +459,7 @@ public class Database implements Votable, LoadSave {
                 SpecialRank sr=Database.getSpecialRank(pd);
                 if(sr!=null){
                     Log.info("Rank of player " + pd.originalName + " is now " + pd.specialRank + ".");
-                    Call.sendMessage(Main.prefix+"Rank of player [orange]" + pd.originalName + "[] is now " + sr.getSuffix() + ".");
+                    Tools.message("Rank of player [orange]" + pd.originalName + "[] is now " + sr.getSuffix() + ".");
                 }
             }
         }
@@ -480,7 +491,7 @@ public class Database implements Votable, LoadSave {
         for(SpecialRank sr:ranks.values()){
             if((sr.stat==stat || stat==null) && sr.condition(pd)){
                 if(specialRank==null || specialRank.value<sr.value){
-                    Call.sendMessage(Main.prefix+"[orange]"+player.name+"[white] obtained "+sr.getSuffix()+" rank.");
+                    Tools.message("[orange]"+player.name+"[white] obtained "+sr.getSuffix()+" rank.");
                     pd.specialRank=sr.name;
                     specialRank=sr;
                     player.name=pd.originalName+sr.getSuffix();
@@ -489,7 +500,7 @@ public class Database implements Votable, LoadSave {
             }
         }
         if(set || specialRank==null || specialRank.stat!=stat)return;
-        Call.sendMessage(Main.prefix+"[orange]"+player.name+"[white] lost his "+specialRank.getSuffix()+" rank.");
+        Tools.message("[orange]"+player.name+"[white] lost his "+specialRank.getSuffix()+" rank.");
         pd.specialRank=null;
         player.name=pd.originalName+pd.rank.getSuffix();
     }

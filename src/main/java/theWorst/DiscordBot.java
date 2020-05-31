@@ -5,7 +5,6 @@ import arc.files.Fi;
 import arc.struct.Array;
 import arc.util.Log;
 import arc.util.Timer;
-import arc.util.serialization.Jval;
 import mindustry.Vars;
 import mindustry.core.GameState;
 import mindustry.entities.type.Player;
@@ -29,20 +28,27 @@ import org.json.simple.JSONObject;
 import theWorst.dataBase.Database;
 import theWorst.dataBase.PlayerData;
 import theWorst.dataBase.Rank;
-import theWorst.discord.*;
+import theWorst.discord.Command;
+import theWorst.discord.CommandContext;
+import theWorst.discord.DiscordCommands;
+import theWorst.discord.MapParser;
 import theWorst.helpers.MapManager;
 import theWorst.interfaces.LoadSave;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
 
-import static mindustry.Vars.*;
-import static mindustry.Vars.data;
+import static mindustry.Vars.maps;
+import static mindustry.Vars.state;
 
 public class DiscordBot implements LoadSave {
     public static String prefix="!";
@@ -120,6 +126,13 @@ public class DiscordBot implements LoadSave {
         api.addMessageCreateListener(handler);
         registerCommands(handler);
 
+        api.addMessageCreateListener((event)->{
+            if(event.getMessageAuthor().isBotUser()) return;
+            if(hasMapAttached(event.getMessage()) && !handler.hasCommand(event.getMessageContent().replace(prefix,""))){
+                event.getChannel().sendMessage("If you want to post map use !postmap command!");
+                event.getMessage().delete();
+            }
+        });
 
         if(channels.containsKey("linked")) {
             TextChannel linkedChannel = channels.get("linked");
@@ -132,7 +145,9 @@ public class DiscordBot implements LoadSave {
                 if(event.getChannel()!=linkedChannel)return;
                 if(event.getMessageAuthor().isBotUser()) return;
                 if(event.getMessageContent().startsWith(prefix)) return;
-                Call.sendMessage("[coral][[[royal]"+event.getMessageAuthor().getName()+"[]]:[sky]"+event.getMessageContent());
+                String content=Tools.cleanEmotes(event.getMessageContent());
+                if( Pattern.matches("^(.)\\1+$", content) && content.contains(" ")) return;
+                Tools.sendChatMessage(event.getMessageAuthor().getName(),"[sky]"+content);
             });
         }
 
@@ -160,7 +175,7 @@ public class DiscordBot implements LoadSave {
     public static boolean isInvalidChannel(MessageCreateEvent event) {
         if(!channels.containsKey("commands")) return false;
         TextChannel commandChannel = channels.get("commands");
-        if(event.getChannel()==commandChannel) return false;
+        if(event.getChannel().getId()==commandChannel.getId()) return false;
         event.getMessage().delete();
         event.getChannel().sendMessage("This is not channel for commands.");
         return true;
@@ -195,7 +210,7 @@ public class DiscordBot implements LoadSave {
                 try{
                     InputStream in = new FileInputStream(map.file.file());
                     BufferedImage img = mapParser.parseMap(in).image;
-                    eb.setThumbnail(img);
+                    eb.setImage(img);
                 } catch (IOException ex){
                     ctx.reply("I em unable to post map with image.");
                 }
@@ -203,14 +218,8 @@ public class DiscordBot implements LoadSave {
         return eb;
     }
 
-    private boolean hasNotMapAttached(CommandContext ctx){
-        Message message = ctx.event.getMessage();
-        if(message.getAttachments().size() != 1 || !message.getAttachments().get(0).getFileName().endsWith(".msav")){
-            ctx.reply("You must have one .msav file in the same message as the command!");
-            message.delete();
-            return true;
-        }
-        return false;
+    public static boolean hasMapAttached(Message message){
+        return message.getAttachments().size() == 1 && message.getAttachments().get(0).getFileName().endsWith(".msav");
     }
 
     @Override
@@ -252,18 +261,12 @@ public class DiscordBot implements LoadSave {
                 EmbedBuilder eb =new EmbedBuilder()
                         .setTitle("COMMANDS")
                         .setColor(Color.orange);
-                EmbedBuilder eb2 =new EmbedBuilder()
-                        .setTitle("ROLE RESTRICTED COMMANDS")
-                        .setColor(Color.orange);
-                StringBuilder sb=new StringBuilder(),sb2 =new StringBuilder();
+                StringBuilder sb=new StringBuilder();
+                sb.append("*!commandName - restriction - <necessary> [optional] |.fileExtension| - description*\n");
                 for(String s:handler.commands.keySet()){
-                    Command c =handler.commands.get(s);
-                    StringBuilder to = sb;
-                    if(c.role!=null) to =sb2;
-                    to.append(c.getInfo()).append("\n");
+                    sb.append(handler.commands.get(s)).append("\n");
                 }
                 ctx.channel.sendMessage(eb.setDescription(sb.toString()));
-                ctx.channel.sendMessage(eb2.setDescription(sb2.toString()));
             }
         });
 
@@ -405,11 +408,26 @@ public class DiscordBot implements LoadSave {
             }
         });
 
-        handler.registerCommand(new Command("postmap") {
+        handler.registerCommand(new Command("info","<name/id>") {
+            {
+                description = "Shows info about player.";
+            }
+            @Override
+            public void run(CommandContext ctx) {
+                PlayerData pd = Database.findData(ctx.args[0]);
+                if(pd==null){
+                    ctx.reply("No data found.");
+                    return;
+                }
+                String data = Tools.cleanColors(pd.toString()).replace("==PLayer data==[]\n\n","");
+                ctx.channel.sendMessage(new EmbedBuilder().setDescription(data).setTitle("PLAYER INFO").setColor(Color.blue));
+            }
+        });
+
+        handler.registerCommand(new Command("postmap","|.msav|") {
             @Override
             public void run(CommandContext ctx) {
                 Message message = ctx.event.getMessage();
-                if(hasNotMapAttached(ctx)) return;
                 MessageAttachment a = message.getAttachments().get(0);
 
                 String dir =Main.directory+"postedMaps/";
@@ -463,7 +481,7 @@ public class DiscordBot implements LoadSave {
             }
         });
 
-        handler.registerCommand(new Command("addmap") {
+        handler.registerCommand(new Command("addmap","|.msav|") {
             {
                 description = "Adds map to server.";
                 role=admin;
@@ -471,9 +489,6 @@ public class DiscordBot implements LoadSave {
             @Override
             public void run(CommandContext ctx) {
                 Message message = ctx.event.getMessage();
-
-                if(hasNotMapAttached(ctx)) return;
-
                 MessageAttachment a = message.getAttachments().get(0);
                 try {
                     String path="config/maps/"+a.getFileName();

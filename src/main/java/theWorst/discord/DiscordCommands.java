@@ -1,5 +1,7 @@
 package theWorst.discord;
 
+import org.javacord.api.entity.message.Message;
+import org.javacord.api.entity.message.MessageAttachment;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.event.message.MessageCreateEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
@@ -7,6 +9,7 @@ import theWorst.DiscordBot;
 import theWorst.Tools;
 
 import java.awt.*;
+import java.util.List;
 import java.util.HashMap;
 
 
@@ -24,9 +27,8 @@ public class DiscordCommands implements MessageCreateListener {
 
     @Override
     public void onMessageCreate(MessageCreateEvent messageCreateEvent) {
-
         String message = messageCreateEvent.getMessageContent();
-        if(messageCreateEvent.getMessage().getAuthor().isBotUser()) return;
+        if(messageCreateEvent.getMessageAuthor().isBotUser()) return;
         if(!message.startsWith(DiscordBot.prefix)) return;
         if(DiscordBot.isInvalidChannel(messageCreateEvent)) return;
         int nameLength = message.indexOf(" ");
@@ -41,8 +43,10 @@ public class DiscordCommands implements MessageCreateListener {
         runCommand(name,new CommandContext(messageCreateEvent,args,theMessage));
     }
 
+    /**Validates command**/
     private void runCommand(String name, CommandContext ctx) {
         Command command=commands.get(name);
+
         if(command==null){
             String match = Tools.findBestMatch(ctx.args[0],commands.keySet());
             ctx.reply("Sorry i don t know this command.");
@@ -56,15 +60,22 @@ public class DiscordCommands implements MessageCreateListener {
                     .setTitle("ACCESS DENIED!")
                     .setDescription("You don't have high enough permission to use this command.");
             ctx.channel.sendMessage(msg);
-        } else if(ctx.args.length<command.minArgs || ctx.args.length>command.maxArgs){
-            EmbedBuilder msg= new EmbedBuilder()
-                    .setColor(Color.red)
-                    .setTitle(ctx.args.length<command.minArgs ? "TOO FEW ARGUMENTS!" : "TOO MATCH ARGUMENTS!")
-                    .setDescription("Valid format : " + DiscordBot.prefix + name + " " + command.argStruct );
-            ctx.channel.sendMessage(msg);
-        } else {
-            command.run(ctx);
+            return;
         }
-
+        Message message=ctx.event.getMessage();
+        List<MessageAttachment> mas = message.getAttachments();
+        boolean tooFew = ctx.args.length<command.minArgs,tooMatch=ctx.args.length>command.maxArgs;
+        boolean correctFiles = command.attachment==null || (mas.size() == 1 && mas.get(0).getFileName().endsWith(command.attachment));
+        if(tooFew || tooMatch || !correctFiles){
+            EmbedBuilder eb= new EmbedBuilder()
+                    .setColor(Color.red)
+                    .setDescription("Valid format : " + DiscordBot.prefix + name + " " + command.argStruct );
+            if(tooFew) eb.setTitle("TOO FEW ARGUMENTS!" );
+            else if(tooMatch) eb.setTitle( "TOO MATCH ARGUMENTS!");
+            else eb.setTitle("INCORRECT ATTACHMENT!");
+            ctx.channel.sendMessage(eb);
+            return;
+        }
+        command.run(ctx);
     }
 }

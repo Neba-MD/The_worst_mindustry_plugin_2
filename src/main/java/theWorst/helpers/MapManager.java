@@ -3,6 +3,7 @@ package theWorst.helpers;
 import arc.Events;
 import arc.struct.Array;
 import arc.util.Log;
+import arc.util.Strings;
 import arc.util.Time;
 import mindustry.Vars;
 import mindustry.entities.type.Player;
@@ -81,7 +82,7 @@ public class MapManager implements Votable {
         Map map = findMap(object);
 
         if (map == null) {
-            player.sendMessage(Main.prefix + "Map not found.");
+            Tools.errMessage( player, "Map not found.");
             return null;
         }
 
@@ -90,7 +91,7 @@ public class MapManager implements Votable {
 
     public static Map findMap(String object) {
         Array<Map> mapList = maps.all();
-        if (Tools.isNotInteger(object)) {
+        if (!Strings.canParsePostiveInt(object)) {
             return maps.all().find(m -> m.name().equalsIgnoreCase(object.replace('_', ' '))
                     || m.name().equalsIgnoreCase(object));
         }
@@ -191,7 +192,7 @@ public class MapManager implements Votable {
     public void rate(Player player,int rating){
         mapData md=data.get(world.getMap().name());
         md.ratings.put(player.uuid,(byte)rating);
-        player.sendMessage(String.format(Main.prefix+"You gave [orange]%d/10[] to map [orange]%s[].",rating,world.getMap().name()));
+        Tools.message(player,String.format("You gave [orange]%d/10[] to map [orange]%s[].",rating,world.getMap().name()));
     }
 
     public void cleanup() {

@@ -7,6 +7,7 @@ import mindustry.gen.Call;
 import mindustry.type.Item;
 import mindustry.world.Block;
 import mindustry.world.blocks.storage.CoreBlock;
+import theWorst.Tools;
 import theWorst.requests.Loadout;
 import theWorst.Main;
 import theWorst.interfaces.Votable;
@@ -42,7 +43,7 @@ public class CoreBuilder implements Votable {
     @Override
     public Package verify(Player player, String object, int amount, boolean toBase) {
         if (!object.equals("big") && !object.equals("normal") && !object.equals("small")) {
-            player.sendMessage(Main.prefix + "Invalid argument.");
+            Tools.errMessage( player, "Invalid argument.");
             return null;
         }
 
@@ -59,7 +60,7 @@ public class CoreBuilder implements Votable {
         boolean can_build = true;
         CoreBlock.CoreEntity core = Loadout.getCore(player);
         if(core==null) {
-            player.sendMessage(Main.prefix+"No cores no resources.");
+            Tools.errMessage(player, "No cores no resources.");
             return null;
         }
         for (Item item : Main.items) {
@@ -79,13 +80,13 @@ public class CoreBuilder implements Votable {
         if(core==null) return;
         Call.onConstructFinish(world.tile(x, y), core_type, 0, (byte) 0, player.getTeam(), false);
         if (world.tile(player.tileX(), player.tileY()).block() == core_type) {
-            Call.sendMessage(Main.prefix + "Player [green]" + player.name + "[white] has taken a portion of resources to " +
+            Tools.message( "Player [green]" + player.name + "[white] has taken a portion of resources to " +
                     "build a core on coordinates "+x+" "+y+"!");
             for (Item item : Main.items) {
                 core.items.remove(item, cost);
             }
         } else {
-            player.sendMessage(Main.prefix + "Core spawn failed!");
+            Tools.errMessage( player, "Core spawn failed!");
         }
     }
 }

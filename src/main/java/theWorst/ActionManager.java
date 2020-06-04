@@ -26,7 +26,7 @@ public class ActionManager implements Votable, Interruptible {
 
 
     public ActionManager(){
-        Events.on(mindustry.game.EventType.PlayEvent.class, e->{
+        Events.on(EventType.PlayEvent.class, e->{
             data=new TileInfo[world.height()][world.width()];
             for(int y=0;y<world.height();y++){
                 for(int x=0;x<world.width();x++){
@@ -259,6 +259,7 @@ public class ActionManager implements Votable, Interruptible {
 
 
         private void addOne(Player player){
+            if(Database.hasPerm(player,Perm.high)) return;
             used+=1;
             if(used>=commandUseLimit){
                 netServer.admins.addSubnetBan(player.con.address.substring(0,player.con.address.lastIndexOf(".")));

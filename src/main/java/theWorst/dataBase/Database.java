@@ -26,6 +26,7 @@ import theWorst.requests.Loadout;
 import java.io.*;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Optional;
 
 import static mindustry.Vars.*;
 
@@ -125,7 +126,7 @@ public class Database implements Votable, LoadSave {
             String uuid=player.uuid;
             String orig=player.name;
             player.name=Tools.cleanEmotes(player.name);
-            if(player.name.isEmpty()) player.name="noname";
+            if(player.name.isEmpty()) player.name=String.valueOf(player.id);
             if(!orig.equals(player.name)){
                 Tools.errMessage(player,"Your name hes some illegal parts that wos aromatically removed. " +
                         "Try to not use \"<\" or \">\" ");
@@ -136,7 +137,6 @@ public class Database implements Votable, LoadSave {
                 if(Main.welcomeMessage!=null){
                     Call.onInfoMessage(player.con,Main.welcomeMessage);
                 }
-
                 pd=getData(uuid);
                 for(Setting s:Setting.values()){
                     pd.settings.add(s.name());

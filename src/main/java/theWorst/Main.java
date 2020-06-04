@@ -502,14 +502,38 @@ public class Main extends Plugin {
         handler.removeCommand("votekick");
         handler.removeCommand("t");
 
+        handler.<Player>register("link","<pin/refuse>","Links your account with discord if you provide " +
+                "a link, or refuses link attempt",(args,player)->{
+            PlayerData pd = Database.getData(player);
+            if(!DiscordBot.pendingLinks.containsKey(pd.serverId)){
+                Tools.errMessage(player,"You don't have any link request, make sure you entered right id on your discord.");
+                return;
+            }
+            if(args[0].equals("refuse")){
+                DiscordBot.pendingLinks.remove(pd.serverId);
+                Tools.message(player,"Link request refused.");
+                return;
+            }
+            if(args[0].equals(DiscordBot.pendingLinks.get(pd.serverId).pin)){
+                pd.discordLink = DiscordBot.pendingLinks.remove(pd.serverId).id;
+                Tools.message(player,"your account wos successfully linked, re-log to update your rank.");
+                return;
+            }
+            Tools.errMessage(player,"Incorrect pin.");
+        });
+
         handler.<Player>register("mute","<name/id> [unmute]","Mutes player for you.",(args,player)->{
             Player target = Tools.findPlayer(args[0]);
             if(target==null){
                 Tools.errMessage(player,"Player does not exist or is not connected.");
                 return;
             }
+            if(target==player){
+                Tools.errMessage(player,"You cannot mute your self.");
+                return;
+            }
             Database.switchSetting(player,target.uuid,args.length==2);
-            Tools.message(target.name+" is "+(args.length==2 ? "unmuted":"muted")+".");
+            Tools.message(player,target.name+" is "+(args.length==2 ? "unmuted":"muted")+".");
         });
 
         handler.<Player>register("mkgf","[playerName] [reason...]","Adds, or removes if payer is marked, griefer mark of given " +
@@ -809,10 +833,16 @@ public class Main extends Plugin {
         });
         handler.<Player>register("dm","[id/name/text...]", "Send direct message to player.", (args,player) -> {
             Player other=Tools.findPlayer(args[0]);
-            if(other==null){
-                Tools.errMessage(player,"Player not found.");
+            if(other!=null) {
+                dmMap.put(player.uuid,other.uuid);
+                Tools.message(player,"Your dm target is now "+other.name+ ". You can just /dm text to send a message.");
                 return;
             }
+            if(!dmMap.containsKey(player.uuid)){
+                Tools.errMessage(player,"No player found. Use /search online to see who you can connect with.");
+                return;
+            }
+            other=playerGroup.find(p->p.uuid.equals(dmMap.get(player.uuid)));
             player.sendMessage("[#ffdfba][DM to "+other.name+"][white]:"+args[0]);
             other.sendMessage("[#ffdfba][DM from "+player.name+"][white]:"+args[0]);
         });

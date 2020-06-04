@@ -39,15 +39,40 @@ public class Tools {
     public static void errMessage(Player player,String content){
         player.sendMessage(prefix+"[scarlet]"+content);
     }
+
     public static void message(Player player,String content){
         player.sendMessage(prefix+content);
     }
+
     public static void message(String content){
         Call.sendMessage(prefix+content);
     }
+
     public static void noPerm(Player player){
         errMessage(player,"You have no permission to do this. Please submit your appeal in discord");
     }
+
+    public static void sendChatMessage(Player sender,String message) {
+        for(Player p:playerGroup){
+            if(!Database.hasEnabled(p, Setting.chat) || Database.hasMuted(p,sender)) return;
+            p.sendMessage("[coral][[[#"+sender.color+"]"+sender.name+"[]]:[]"+message);
+        }
+    }
+
+    public static void sendChatMessage(String name,String message) {
+        for(Player p:playerGroup){
+            if(!Database.hasEnabled(p, Setting.chat)) return;
+            p.sendMessage("[coral][[[royal]"+name+"[]]:[]"+message);
+        }
+    }
+
+    public static boolean isBlank(String string){
+        for(int i=0;i<string.length();i++){
+            if(string.charAt(i)!=' ') return false;
+        }
+        return true;
+    }
+
     public static String toString(Array<String> struct){
         StringBuilder b=new StringBuilder();
         for(String s :struct){
@@ -182,22 +207,12 @@ public class Tools {
         if(wall.synthetic()){
             return team.color.rgba();
         }
-        return wall.solid ? colorMap.get(wall.name) : ore == Blocks.air ? colorMap.get(floor.name) : ore.color.rgba();
+        Integer wallCol = colorMap.get(wall.name);
+        Integer floorCol = colorMap.get(floor.name);
+        return wall.solid ? wallCol==null ? 0:wallCol : ore == Blocks.air ? floorCol==null ? 0:floorCol : ore.color.rgba();
     }
 
-    public static void sendChatMessage(Player sender,String message) {
-        for(Player p:playerGroup){
-            if(!Database.hasEnabled(p, Setting.chat) || Database.hasMuted(p,sender)) return;
-            p.sendMessage("[coral][[[scarlet]"+sender.name+"[]]:[]"+message);
-        }
-    }
 
-    public static void sendChatMessage(String name,String message) {
-        for(Player p:playerGroup){
-            if(!Database.hasEnabled(p, Setting.chat)) return;
-            p.sendMessage("[coral][[[scarlet]"+name+"[]]:[]"+message);
-        }
-    }
 
     public static class JsonMap {
         private final JSONObject data;

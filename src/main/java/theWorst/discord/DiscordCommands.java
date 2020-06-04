@@ -33,8 +33,7 @@ public class DiscordCommands implements MessageCreateListener {
         if(DiscordBot.isInvalidChannel(messageCreateEvent)) return;
         int nameLength = message.indexOf(" ");
         if(nameLength<0){
-            String name = message.substring(DiscordBot.prefix.length());
-            runCommand(name,new CommandContext(messageCreateEvent, new String[0],""));
+            runCommand(message.replace(DiscordBot.prefix,""),new CommandContext(messageCreateEvent,new String[0],null));
             return;
         }
         String theMessage = message.substring(nameLength+1);

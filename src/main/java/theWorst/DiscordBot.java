@@ -2,18 +2,21 @@ package theWorst;
 
 import arc.Events;
 import arc.files.Fi;
+import arc.math.Mathf;
 import arc.struct.Array;
 import arc.util.Log;
+import arc.util.Strings;
 import arc.util.Timer;
+import javafx.util.Pair;
 import mindustry.Vars;
 import mindustry.core.GameState;
 import mindustry.entities.type.Player;
 import mindustry.game.EventType;
 import mindustry.game.Team;
 import mindustry.game.Teams;
-import mindustry.gen.Call;
 import mindustry.io.MapIO;
 import mindustry.maps.Map;
+import mindustry.ui.dialogs.JoinDialog;
 import mindustry.world.blocks.storage.CoreBlock;
 import mindustry.world.modules.ItemModule;
 import org.javacord.api.DiscordApi;
@@ -23,6 +26,9 @@ import org.javacord.api.entity.message.Message;
 import org.javacord.api.entity.message.MessageAttachment;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.permission.Role;
+import org.javacord.api.entity.server.Server;
+import org.javacord.api.entity.user.User;
+import org.javacord.api.event.Event;
 import org.javacord.api.event.message.MessageCreateEvent;
 import org.json.simple.JSONObject;
 import theWorst.dataBase.Database;
@@ -44,17 +50,17 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
-import java.util.regex.Pattern;
+import java.util.concurrent.ExecutionException;
 
-import static mindustry.Vars.maps;
-import static mindustry.Vars.state;
+import static mindustry.Vars.*;
 
 public class DiscordBot implements LoadSave {
     public static String prefix="!";
     private final int maxMessageLength=2000;
 
-    private static   DiscordApi api;
+    private static DiscordApi api;
 
     private boolean setup=false;
     
@@ -63,24 +69,78 @@ public class DiscordBot implements LoadSave {
 
     private static final HashMap<String, Role> roles = new HashMap<>();
     private static final HashMap<String, TextChannel> channels = new HashMap<>();
+    private static Long serverId = null;
     private static final String configFile =Main.directory + "discordSettings.json";
+
+    public static final HashMap<Long,LinkData> pendingLinks = new HashMap<>();
+
+    public static class LinkData{
+        public String name,pin,id;
+
+        LinkData(String name,String pin,String id){
+            this.name=name;
+            this.pin=pin;
+            this.id=id;
+        }
+    }
 
     public DiscordBot() {
         connect();
+        Events.on(EventType.PlayerJoin.class , e->{
+            if(api==null || serverId==null) {
+                Log.info("No server id.");
+                return;
+            }
+            PlayerData pd = Database.getData(e.player);
+            if(pd==null || pd.trueRank==Rank.griefer) return;
+            if(pendingLinks.containsKey(pd.serverId)){
+                player.sendMessage("Discord user [orange]"+pendingLinks.get(pd.serverId).name+"[] " +
+                        "is trying to link the accounts,if that's you, use \"/link <your pin bot gave you to confirm " +
+                        "liking>\"or \"/link refuse\" fi its not you.");
+            }
+            if(!pd.discordLink.isEmpty()){
+                Log.info("Link is here.");
+                CompletableFuture<User> optionalUser = api.getUserById(pd.discordLink);
+                Timer.schedule(new Timer.Task() {
+                    @Override
+                    public void run() {
+                        if(optionalUser.isDone()){
+                            Log.info("user found.");
+                            this.cancel();
+                            try {
+                                User user=optionalUser.get();
+                                if(user==null) return;
+                                Optional<Server> server = api.getServerById(serverId);
+                                if(!server.isPresent()) return;
+                                for(Role r:user.getRoles(server.get())){
+                                    try{
+                                        Rank rank = Rank.valueOf(r.getName());
+                                        if(pd.trueRank.getValue()<rank.getValue()){
+                                            Database.setRank(pd,rank,e.player);
+                                        }
+
+                                    } catch (IllegalArgumentException ignored){}
+                                }
+                            } catch (InterruptedException | ExecutionException interruptedException) {
+                                interruptedException.printStackTrace();
+                            }
+                        }
+                    }
+                },0,.1f);
+            } else Log.info("Link is not here.");
+        });
     }
 
     public static void disconnect(){
         if(api!=null){
             api.disconnect();
+            api=null;
         }
     }
 
     public void connect(){
         setup=false;
-        if(api!=null) {
-            api.disconnect();
-            api=null;
-        }
+        disconnect();
         Tools.loadJson(configFile,(data)-> {
             Tools.JsonMap dataMap = new Tools.JsonMap(data);
             if(data.containsKey("prefix")) prefix =dataMap.getString("prefix");
@@ -100,6 +160,9 @@ public class DiscordBot implements LoadSave {
                     if(!role.isPresent()) {
                         Log.info(o+ " role not found.");
                         continue;
+                    }
+                    if(serverId==null){
+                        serverId=role.get().getServer().getId();
                     }
                     roles.put(o,role.get());
                 }
@@ -146,7 +209,7 @@ public class DiscordBot implements LoadSave {
                 if(event.getMessageAuthor().isBotUser()) return;
                 if(event.getMessageContent().startsWith(prefix)) return;
                 String content=Tools.cleanEmotes(event.getMessageContent());
-                if( Pattern.matches("^(.)\\1+$", content) && content.contains(" ")) return;
+                if(Tools.isBlank(content)) return;
                 Tools.sendChatMessage(event.getMessageAuthor().getName(),"[sky]"+content);
             });
         }
@@ -264,9 +327,40 @@ public class DiscordBot implements LoadSave {
                 StringBuilder sb=new StringBuilder();
                 sb.append("*!commandName - restriction - <necessary> [optional] |.fileExtension| - description*\n");
                 for(String s:handler.commands.keySet()){
-                    sb.append(handler.commands.get(s)).append("\n");
+                    sb.append(handler.commands.get(s).getInfo()).append("\n");
                 }
                 ctx.channel.sendMessage(eb.setDescription(sb.toString()));
+            }
+        });
+
+        handler.registerCommand(new Command("link","<serverId>") {
+            {
+                description = "Links your discord with your server profile.";
+            }
+            @Override
+            public void run(CommandContext ctx) {
+                if(!Strings.canParsePostiveInt(ctx.args[0])){
+                    ctx.reply("Server Id has to be integer.");
+                    return;
+                }
+                Optional<User> optionalUser = ctx.author.asUser();
+                if(!optionalUser.isPresent()){
+                    ctx.reply("It appears that you are not a user.");
+                    return;
+                }
+                User user = optionalUser.get();
+                PlayerData pd = Database.getData(Integer.parseInt(ctx.args[0]));
+                if(pd==null){
+                    ctx.reply("Account not found.");
+                    return;
+                }
+                if(pd.discordLink.equals(user.getIdAsString())){
+                    ctx.reply("You already have this account linked.");
+                    return;
+                }
+                String pin =String.valueOf(Mathf.random(1000,9999));
+                user.sendMessage("Use /link "+pin+" command in game to confirm the linking.");
+                pendingLinks.put(pd.serverId, new LinkData(user.getName(),pin, user.getIdAsString()));
             }
         });
 
@@ -419,7 +513,7 @@ public class DiscordBot implements LoadSave {
                     ctx.reply("No data found.");
                     return;
                 }
-                String data = Tools.cleanColors(pd.toString()).replace("==PLayer data==[]\n\n","");
+                String data = Tools.cleanColors(pd.toString()).replace("==PLayer data==\n\n","");
                 ctx.channel.sendMessage(new EmbedBuilder().setDescription(data).setTitle("PLAYER INFO").setColor(Color.blue));
             }
         });

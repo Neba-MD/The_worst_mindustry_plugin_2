@@ -131,8 +131,8 @@ public class Tools {
     }
 
     public static Player findPlayer(String arg) {
-        if(Strings.canParseInt(arg.substring(1))){
-            int id = Strings.parseInt(arg.substring(1));
+        if(Strings.canParseInt(arg)){
+            int id = Strings.parseInt(arg);
             return  playerGroup.find(p -> Database.getData(p).serverId == id);
         }
         for(Player p:playerGroup){

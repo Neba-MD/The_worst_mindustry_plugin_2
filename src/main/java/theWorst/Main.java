@@ -47,6 +47,7 @@ public class Main extends Plugin {
 
     public static final String[] itemIcons = {"\uF838", "\uF837", "\uF836", "\uF835", "\uF832", "\uF831", "\uF82F", "\uF82E", "\uF82D", "\uF82C"};
     public static String welcomeMessage;
+    public static String rules;
     ArrayMap<String, LoadSave> loadSave = new ArrayMap<>();
     public static ArrayMap<String, Requester> configured = new ArrayMap<>();
 
@@ -201,6 +202,7 @@ public class Main extends Plugin {
             }
             welcomeMessage=(String) data.get("welcomeMessage");
             transportTime=Tools.getInt(data.get("transTime"));
+            rules=(String) data.get("rules");
         },this::createDefaultConfig);
     }
 
@@ -219,6 +221,7 @@ public class Main extends Plugin {
             data.put("factory",load);
             data.put("transTime",180);
             data.put("welcomeMessage",null);
+            data.put("rules",null);
             return data;
         });
     }
@@ -502,7 +505,7 @@ public class Main extends Plugin {
         handler.removeCommand("votekick");
         handler.removeCommand("t");
 
-        handler.<Player>register("link","<pin/refuse>","Links your account with discord if you provide " +
+        /*handler.<Player>register("link","<pin/refuse>","Links your account with discord if you provide " +
                 "a link, or refuses link attempt",(args,player)->{
             PlayerData pd = Database.getData(player);
             if(!DiscordBot.pendingLinks.containsKey(pd.serverId)){
@@ -520,7 +523,17 @@ public class Main extends Plugin {
                 return;
             }
             Tools.errMessage(player,"Incorrect pin.");
-        });
+        });*/
+
+        handler.<Player>register("rules","Shows rules of this server.",(args,player)->{
+
+            if(rules==null){
+                Tools.message(player,"There are no rules on this server.");
+                return;
+            }
+
+            Call.onInfoMessage(player.con,"[orange]==RULES==[]\n\n"+rules);
+                });
 
         handler.<Player>register("mute","<name/id> [unmute]","Mutes player for you.",(args,player)->{
             Player target = Tools.findPlayer(args[0]);

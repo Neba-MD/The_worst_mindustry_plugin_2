@@ -72,9 +72,9 @@ public class DiscordBot implements LoadSave {
     private static Long serverId = null;
     private static final String configFile =Main.directory + "discordSettings.json";
 
-    public static final HashMap<Long,LinkData> pendingLinks = new HashMap<>();
+    //public static final HashMap<Long,LinkData> pendingLinks = new HashMap<>();
 
-    public static class LinkData{
+    /*public static class LinkData{
         public String name,pin,id;
 
         LinkData(String name,String pin,String id){
@@ -82,11 +82,11 @@ public class DiscordBot implements LoadSave {
             this.pin=pin;
             this.id=id;
         }
-    }
+    }*/
 
     public DiscordBot() {
         connect();
-        Events.on(EventType.PlayerJoin.class , e->{
+       /* Events.on(EventType.PlayerJoin.class , e->{
             if(api==null || serverId==null) {
                 Log.info("No server id.");
                 return;
@@ -128,7 +128,7 @@ public class DiscordBot implements LoadSave {
                     }
                 },0,.1f);
             } else Log.info("Link is not here.");
-        });
+        });*/
     }
 
     public static void disconnect(){
@@ -333,7 +333,7 @@ public class DiscordBot implements LoadSave {
             }
         });
 
-        handler.registerCommand(new Command("link","<serverId>") {
+       /* handler.registerCommand(new Command("link","<serverId>") {
             {
                 description = "Links your discord with your server profile.";
             }
@@ -362,7 +362,7 @@ public class DiscordBot implements LoadSave {
                 user.sendMessage("Use /link "+pin+" command in game to confirm the linking.");
                 pendingLinks.put(pd.serverId, new LinkData(user.getName(),pin, user.getIdAsString()));
             }
-        });
+        });*/
 
         handler.registerCommand(new Command("gamestate") {
             {

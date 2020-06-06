@@ -77,6 +77,7 @@ public class ActionManager implements Votable, Interruptible {
             Player player = action.player;
             if (player == null) return true;
             PlayerData pd=Database.getData(player);
+            if(pd == null) return false;
             pd.lastAction= Time.millis();
             if(pd.rank==Rank.AFK){
                 Database.afkThread.run();

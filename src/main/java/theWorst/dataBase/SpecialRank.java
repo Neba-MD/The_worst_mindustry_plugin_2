@@ -2,7 +2,6 @@ package theWorst.dataBase;
 
 import arc.struct.Array;
 import arc.util.Log;
-import arc.util.serialization.Jval;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
@@ -37,7 +36,7 @@ public class SpecialRank implements Serializable {
                 }
             }
             if(obj.containsKey("linked")){
-                for(Object o:(Jval.JsonArray)obj.get("linked")){
+                for(Object o:(JSONArray) obj.get("linked")){
                     if(!all.containsKey(o)) continue;
                     linked.add((String)o);
                 }
